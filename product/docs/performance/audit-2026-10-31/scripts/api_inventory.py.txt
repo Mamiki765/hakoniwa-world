@@ -1,0 +1,117 @@
+"""Pinned-source performance triage inventory. Reads code/schema only, never .env/data."""
+from pathlib import Path
+import csv, hashlib, json, re, subprocess
+
+ROOT = Path('/workspace/hakoniwa-world')
+OUT = Path('/workspace/perf-audit-20261031')
+SHA = '2e93ec918774ad64d787aba99fc59a7bc3e54d16'
+assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip() == SHA
+
+service_names = '''AdminOperationsService AnnouncementAdminAuthorizer AnnouncementBodyRenderer AuthIdentityService BoostScheduleService CapitalPlacementService CollectionBackfill CollectionRegistrar CompensationWarehouseService CurrentCatalogInstaller CurrentDatabaseBaseline DailyLoginRewardService DailyQuestService InquiryPresenter InquirySubmissionService ManualNationDormancyService MapChunkService MapSpaceCoveragePreflight MessageBoardAuditRecorder MessageBoardService ModerationRecordService NationAbandonmentService NationBasicStatusProjection NationCreationService NationProfileService NationResourceForecastProjection PublicRankingAchievementProjection PublicWorldService RoutineAuditCompactor SalePolicyService SecretaryCollectionService SecretaryEquipmentService SecretaryImageRetentionService SecretaryItemPresenter SecretaryItemSaleService SecretaryLendingService SecretaryNamingService SecretaryPresenter SecretaryProfilePresenter SecretaryProfileService SecretaryService SecretarySynthesisService SecretaryTicketGachaService SecretaryUndergroundStatusPresenter SecretaryWarehouseService SurfaceShipCourseService SurfaceShipNameService SurfaceVisibilityService TradingPostService UserAchievementService UserMonumentDesignService VisitorCodeAllocator VisitorCodeGenerator WebImageUploadService WorldExpansionService OceanWorldGenerator'''.split()
+services = [ROOT/'product/app/Application'/f'{name}.php' for name in service_names]
+services += [ROOT/'product/app/Application/Underground'/f'{name}.php' for name in '''GuideConversationService GuideConversationUnlockCatalog UndergroundBattleHistoryCompactor UndergroundJournalService UndergroundLifetimeStatistics UndergroundMarketService UndergroundReceiptPurgeService UndergroundReceiptRollupService UndergroundReportSourceIdentity UndergroundRequestAdmission UndergroundSurfaceMapProjection'''.split()]
+services += [ROOT/'product/app/Application/PlayerIslandEventService.php']
+services += [ROOT/'product/app/Application/OilDiscoveryExperienceBackfill.php']
+controllers = sorted((ROOT/'product/app/Http/Controllers').rglob('*.php'))
+console = sorted((ROOT/'product/app/Console/Commands').glob('*.php'))
+resources = sorted((ROOT/'product/app/Http/Resources').glob('*.php'))
+files = sorted(set(services+controllers+console+resources))
+
+candidates = {
+'UndergroundMarketService':'AP-01;AP-08','BoostScheduleService':'AP-02',
+'SurfaceVisibilityService':'AP-03','MapChunkService':'AP-03',
+'NationBasicStatusProjection':'AP-04','PublicWorldService':'AP-04;AP-07',
+'UndergroundReceiptPurgeService':'AP-05','AdminOperationsService':'AP-05',
+'SecretaryCollectionService':'AP-06','DailyQuestService':'AP-07',
+'PlayerIslandEventService':'AP-09','SecretaryImageRetentionService':'AP-10',
+'NationCreationService':'AP-11','RoutineAuditCompactor':'AP-12',
+'SyncMariaAchievements':'AP-13','OilDiscoveryExperienceBackfill':'AP-14','CollectionBackfill':'AP-14',
+}
+candidate_methods = {
+'UndergroundMarketService': {'browse':'AP-01','mine':'AP-08','attentionForProfile':'AP-08','claim':'AP-08'},
+'BoostScheduleService': {'publicStatus':'AP-02','adminStatus':'AP-02'},
+'SurfaceVisibilityService': {'visibleCoordinates':'AP-03'},'MapChunkService':{'present':'AP-03'},
+'NationBasicStatusProjection':{'forWorld':'AP-04'},'PublicWorldService':{'rankings':'AP-04','nation':'AP-07'},
+'UndergroundReceiptPurgeService':{'purge':'AP-05'},'AdminOperationsService':{'purgeStatus':'AP-05'},
+'SecretaryCollectionService':{'index':'AP-06','unclaimedCount':'AP-06','claimAll':'AP-06'},
+'DailyQuestService':{'todayStatuses':'AP-07'},'SecretaryImageRetentionService':{'pruneExpired':'AP-10'},
+'NationCreationService':{'create':'AP-11'},'RoutineAuditCompactor':{'preview':'AP-12','compact':'AP-12'},
+}
+notes = {
+'MessageBoardService':'timeline固定上限・relations eager、target retentionとcooldown index確認。mutation lockを維持。',
+'TradingPostService':'listingと関連をeager・bid membershipを集合取得。全active listing返却は現API契約なので無断paginationしない。',
+'SecretaryLendingService':'after-ID page20+1、装備/skills/images/trialをeager。',
+'SecretaryEquipmentService':'全surface資産とWorld lock順は意味ある再検証。request跨ぎcache対象外。',
+'SecretarySynthesisService':'recipes×inventoryのbounded走査。全材料lock・receiptと資産付与の順序維持。',
+'SecretaryTicketGachaService':'draw数に比例する付与・ledger/結果snapshotはゲーム効果。省略・確率変更は候補外。',
+'CompensationWarehouseService':'asset種別固定・items eager、receipt/資産lock/overflow検証は維持。',
+'AuthIdentityService':'provider+subject unique、advisory lockで連携idempotency。外部OAuth待ち実測なし。',
+'CapitalPlacementService':'候補SQLは既に矩形pre-filter+hex厳密判定。OFFSET再評価は計画未測定。',
+'WorldExpansionService':'cellsは500件batch insert、coverage全走査は正当性検証。高速化の具体的不足なし。',
+'OceanWorldGenerator':'chunks一括insert、cells500件batch、fixture/初期化専用。',
+'UndergroundReceiptRollupService':'4stream UNION totals・id checkpoint/500-1000 bounded。正当性再集計を省略しない。',
+'UndergroundBattleHistoryCompactor':'snapshot preview lazyById25、apply battle単位transaction/time budget。',
+'UndergroundJournalService':'durable statistics/rollup参照で全battle JSON走査を回避済。trial/content再取得は固定回数。',
+'AnnouncementController':'latest5・page10とcreated_at/id index。Markdown最大20KB、描画cacheは未測定。',
+'AdminInquiryController':'latest5・page10、user/nation eager、created_at/id index。',
+'AnnouncementAdminAuthorizer':'provider一覧は小。未ロードの場合relation query+後続lazy読込で重複余地はAP-07補足。',
+}
+
+rows=[]; manifest=[]
+for path in files:
+    if not path.exists():
+        raise RuntimeError(f'missing tracked source: {path}')
+    source=path.read_text(); rel=str(path.relative_to(ROOT)); stem=path.stem
+    owner='api-db'
+    if stem in {'CommandQueueController'}: owner='command_audit'
+    elif stem in {'UndergroundIntroController','UndergroundEquipmentController','UndergroundRequestAdmissionController'}: owner='battle_audit'
+    elif stem in {'RunTurn','CompensateTurn','InitializeTurnSchedule','TurnStatus'}: owner='turn_audit'
+    elif stem in {'UndergroundBalance','PruneUndergroundBattleLogs'}: owner='battle_audit'
+    elif stem in {'AppController','AssetController','ManualController','CommunityGuidelinesController'}: owner='root'
+    functions=list(re.finditer(r'^[ \t]*public\s+(?:static\s+)?function\s+(\w+)\s*\(',source,re.M))
+    for m in functions:
+        name=m.group(1)
+        if name=='__construct': continue
+        kind='console' if '/Console/' in rel else ('api-controller' if '/Controllers/Api/' in rel else ('controller' if '/Controllers/' in rel else ('resource' if '/Resources/' in rel else 'service')))
+        candidate=candidate_methods.get(stem,{}).get(name,'') if stem in candidate_methods else candidates.get(stem,'')
+        result='改善候補' if candidate else '具体的追加候補なし'
+        if owner!='api-db': result='別担当の詳細台帳で統合'
+        rows.append(dict(kind=kind,path=rel,line=source.count('\n',0,m.start())+1,entrypoint=name,owner=owner,
+                         status='確認済み（静的入口・SQL/loop/relation構造）',result=result,candidate=candidate,
+                         measurement='未確認（runtime/plan）；AP-02は代表SQL実測、AP-09はdecoder限定実測',
+                         notes=notes.get(stem,'呼出/SQL数・入力上限・collection走査を静的評価。詳細候補とDB planの限界はapi-db.md参照。')))
+    manifest.append(dict(path=rel,sha256=hashlib.sha256(source.encode()).hexdigest(),lines=source.count('\n')+1,
+                         public_methods=len(functions),query_sites=len(re.findall(r'(?:::query\(|DB::(?:table|select|query)\()',source)),
+                         iteration_sites=len(re.findall(r'\b(?:foreach|while|for)\s*\(',source))))
+
+with (OUT/'api-db-coverage.csv').open('w') as f:
+    w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
+with (OUT/'evidence/api-db-source-manifest.json').open('w') as f:
+    json.dump(dict(sha=SHA,files=manifest,coverage_rows=len(rows)),f,ensure_ascii=False,indent=2)
+
+# Index catalog of canonical schema and all append-only current migrations.
+schema=ROOT/'product/database/schema/pgsql-schema.sql'; s=schema.read_text()
+tables={m.group(1):dict(table=m.group(1),source=str(schema.relative_to(ROOT)),line=s.count('\n',0,m.start())+1,indexes=[],constraints=[]) for m in re.finditer(r'^CREATE TABLE public\.(\w+)\s*\(',s,re.M)}
+for m in re.finditer(r'^CREATE (?:UNIQUE )?INDEX .*? ON public\.(\w+) .*?;',s,re.M):
+    tables[m.group(1)]['indexes'].append(m.group(0))
+for m in re.finditer(r'ALTER TABLE ONLY public\.(\w+)\s+ADD CONSTRAINT (.*?);',s,re.S):
+    if 'PRIMARY KEY' in m.group(2) or 'UNIQUE' in m.group(2):
+        tables[m.group(1)]['constraints'].append(' '.join(m.group(2).split()))
+for migration in sorted((ROOT/'product/database/migrations').glob('*.php')):
+    t=migration.read_text()
+    for m in re.finditer(r"Schema::(create|table)\('([^']+)'.*?\n\s*}\);",t,re.S):
+        table=m.group(2)
+        if table not in tables:
+            tables[table]=dict(table=table,source=str(migration.relative_to(ROOT)),line=t.count('\n',0,m.start())+1,indexes=[],constraints=[])
+        for decl in re.finditer(r'\$table->(?:index|unique|primary)\(.*?\);',m.group(0),re.S):
+            tables[table]['indexes'].append(str(migration.relative_to(ROOT))+': '+' '.join(decl.group(0).split()))
+    for m in re.finditer(r'CREATE (?:UNIQUE )?INDEX \w+ ON (\w+) \([^";]+',t):
+        table=m.group(1)
+        if table in tables:
+            tables[table]['indexes'].append(str(migration.relative_to(ROOT))+': '+m.group(0))
+indexrows=[]
+for table,row in sorted(tables.items()):
+    indexrows.append(dict(table=table,source=row['source'],line=row['line'],secondary_indexes=' | '.join(row['indexes']),primary_unique_constraints=' | '.join(row['constraints']),status='定義確認済み・関連query照合（静的）',plan='未確認：本番件数・selectivity・EXPLAIN ANALYZE未取得',result='index追加はplan根拠を得てから；API候補はapi-db.md'))
+with (OUT/'api-db-indexes.csv').open('w') as f:
+    w=csv.DictWriter(f,fieldnames=list(indexrows[0]));w.writeheader();w.writerows(indexrows)
+print(json.dumps(dict(files=len(manifest),coverage_rows=len(rows),api_controllers=len([p for p in controllers if '/Api/' in str(p)]),console_commands=len(console),tables=len(tables)),ensure_ascii=False))

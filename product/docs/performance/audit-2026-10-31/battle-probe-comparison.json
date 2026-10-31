@@ -1,0 +1,29 @@
+{
+  "laboratory_32_fights": {
+    "same_result_hashes": true,
+    "cases": 32,
+    "rounds": 3195,
+    "before_ms": 373.349487,
+    "after_ms": 361.848039,
+    "before_ai_select": 9427,
+    "after_ai_select": 6232
+  },
+  "runtime_8_solo_fights": {
+    "same_result_hashes": true,
+    "cases": 8,
+    "rounds": 50,
+    "before_ms": 4.228512,
+    "after_ms": 4.224777,
+    "before_ai_select": 150,
+    "after_ai_select": 100
+  },
+  "runtime_8_party_fights": {
+    "same_result_hashes": true,
+    "cases": 8,
+    "rounds": 56,
+    "before_ms": 24.045299,
+    "after_ms": 23.628849,
+    "before_ai_select": 567,
+    "after_ai_select": 356
+  }
+}

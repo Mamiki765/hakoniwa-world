@@ -1,0 +1,246 @@
+{
+    "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "php": "8.5.8",
+    "current_service_sha256": "1001e4bba9e108eb04b9c7da4e7f41d3eccb21e5bd0b461a9dc75720b1be053e",
+    "source": "UndergroundMarketService::browse filter\/sort subset",
+    "fixture_rows": 96,
+    "page_size": 20,
+    "cases": [
+        {
+            "filters": [],
+            "equal": true,
+            "current_rows_fetched": 83,
+            "candidate_rows_fetched": 21,
+            "result": {
+                "ids": [
+                    96,
+                    95,
+                    94,
+                    93,
+                    92,
+                    90,
+                    89,
+                    88,
+                    87,
+                    86,
+                    85,
+                    83,
+                    82,
+                    81,
+                    80,
+                    79,
+                    78,
+                    76,
+                    75,
+                    74
+                ],
+                "has_more": true
+            }
+        },
+        {
+            "filters": {
+                "sort": "price"
+            },
+            "equal": true,
+            "current_rows_fetched": 83,
+            "candidate_rows_fetched": 21,
+            "result": {
+                "ids": [
+                    95,
+                    90,
+                    85,
+                    80,
+                    75,
+                    65,
+                    60,
+                    55,
+                    50,
+                    45,
+                    40,
+                    30,
+                    25,
+                    20,
+                    15,
+                    10,
+                    5,
+                    96,
+                    86,
+                    81
+                ],
+                "has_more": true
+            }
+        },
+        {
+            "filters": {
+                "sort": "item_level"
+            },
+            "equal": true,
+            "current_rows_fetched": 83,
+            "candidate_rows_fetched": 21,
+            "result": {
+                "ids": [
+                    89,
+                    80,
+                    71,
+                    62,
+                    53,
+                    44,
+                    26,
+                    17,
+                    8,
+                    88,
+                    79,
+                    61,
+                    52,
+                    43,
+                    34,
+                    25,
+                    16,
+                    96,
+                    87,
+                    78
+                ],
+                "has_more": true
+            }
+        },
+        {
+            "filters": {
+                "category": "weapon",
+                "il_min": 30,
+                "quality_min": 30
+            },
+            "equal": true,
+            "current_rows_fetched": 83,
+            "candidate_rows_fetched": 10,
+            "result": {
+                "ids": [
+                    92,
+                    68,
+                    64,
+                    52,
+                    48,
+                    32,
+                    24,
+                    12,
+                    8,
+                    4
+                ],
+                "has_more": false
+            }
+        },
+        {
+            "filters": {
+                "purchasable_only": true
+            },
+            "equal": true,
+            "current_rows_fetched": 83,
+            "candidate_rows_fetched": 21,
+            "result": {
+                "ids": [
+                    94,
+                    93,
+                    92,
+                    90,
+                    85,
+                    83,
+                    82,
+                    81,
+                    76,
+                    75,
+                    74,
+                    73,
+                    72,
+                    67,
+                    66,
+                    65,
+                    64,
+                    58,
+                    57,
+                    55
+                ],
+                "has_more": true
+            }
+        },
+        {
+            "filters": {
+                "weapon_style": "sword"
+            },
+            "equal": true,
+            "current_rows_fetched": 83,
+            "candidate_rows_fetched": 7,
+            "result": {
+                "ids": [
+                    92,
+                    76,
+                    68,
+                    52,
+                    44,
+                    20,
+                    4
+                ],
+                "has_more": false
+            }
+        },
+        {
+            "filters": {
+                "sort": "item_level",
+                "purchasable_only": true,
+                "page": 2
+            },
+            "equal": true,
+            "current_rows_fetched": 83,
+            "candidate_rows_fetched": 21,
+            "result": {
+                "ids": [
+                    83,
+                    74,
+                    65,
+                    47,
+                    38,
+                    29,
+                    20,
+                    11,
+                    2,
+                    82,
+                    73,
+                    64,
+                    55,
+                    46,
+                    37,
+                    19,
+                    10,
+                    1,
+                    90,
+                    81
+                ],
+                "has_more": true
+            }
+        },
+        {
+            "filters": {
+                "il_min": 1000
+            },
+            "equal": true,
+            "current_rows_fetched": 83,
+            "candidate_rows_fetched": 0,
+            "result": {
+                "ids": [],
+                "has_more": false
+            }
+        },
+        {
+            "filters": {
+                "page": 1000000
+            },
+            "equal": true,
+            "current_rows_fetched": 83,
+            "candidate_rows_fetched": 0,
+            "result": {
+                "ids": [],
+                "has_more": false
+            }
+        }
+    ],
+    "permanent_data_changed": false,
+    "limits": "Synthetic TEMP table only. Compares IDs\/order\/has_more and rows transferred; not admission, blocked reasons, inventory, purchase, historic malformed JSON, index plans, latency or production throughput. No market runtime implementation or migration."
+}

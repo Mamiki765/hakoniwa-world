@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="Tests\Feature\CommandSerializationSqlProbeTest" file="/audit/scripts/CommandSerializationSqlProbeTest.php" tests="1" assertions="9" errors="0" failures="0" skipped="0" time="2.690893">
+    <testcase name="test_repeated_queue_targets_are_reread_per_row" file="/audit/scripts/CommandSerializationSqlProbeTest.php" line="26" class="Tests\Feature\CommandSerializationSqlProbeTest" classname="Tests.Feature.CommandSerializationSqlProbeTest" assertions="9" time="2.690893"/>
+  </testsuite>
+</testsuites>

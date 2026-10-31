@@ -1,0 +1,21 @@
+{
+  "source_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "git_status_porcelain": "",
+  "git_diff_exit_code": 0,
+  "source_files_verified": 758,
+  "source_hash_mismatches": [],
+  "original_readme_prefix_unchanged": true,
+  "original_readme_prefix_bytes": 19489,
+  "report_fixed_sha_source_links_checked": 111,
+  "invalid_links": [],
+  "production_or_oci_operations": false,
+  "product_mutations": false,
+  "initial_validation": "isolated focused only; no CI/full suite",
+  "db_redesign_validation": "static only; no extra DB/test/container",
+  "library_saved": false,
+  "confirmed_library_file_ids": [],
+  "remaining_delivery_blockers": [
+    "Library upload helper hosted apps tools/list network error; no prepare/finalize result"
+  ],
+  "remaining_denied_or_uncertain_product_actions": []
+}

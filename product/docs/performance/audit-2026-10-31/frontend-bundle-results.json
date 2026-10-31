@@ -1,0 +1,20 @@
+{
+  "frontend-build": {
+    "entryFile": "assets/app-pLKbRYUq.js",
+    "entryBytes": 644278,
+    "entryGzipBytes": 193934,
+    "dynamicImports": []
+  },
+  "frontend-split-build": {
+    "entryFile": "assets/app-BqPpAR7A.js",
+    "entryBytes": 395504,
+    "entryGzipBytes": 123824,
+    "dynamicImports": [
+      {
+        "file": "assets/UndergroundPanel-BUlV6QzO.js",
+        "bytes": 252385,
+        "gzipBytes": 72315
+      }
+    ]
+  }
+}

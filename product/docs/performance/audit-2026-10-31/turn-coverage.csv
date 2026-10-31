@@ -1,0 +1,66 @@
+id,entry,path,line,review,assessment,candidate_ids,static_evidence,dynamic_limit,fixed_sha
+phase-01,prepare_turn,product/app/Application/CompleteTurnEngine.php,117,確認済み,改善候補,"T01,T05,T11",lifecycle/snapshot/summary/secretary/karma。snapshotはbatch済,PG成熟1case。dormant全分岐未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+phase-02,calculate_terrain_context,product/app/Application/CompleteTurnEngine.php,172,確認済み,問題なし,,stableID取得+FisherYates O(C+N),PG成熟1case。乱数microbench別,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+phase-03,resolve_territory_influence,product/app/Application/TerritoryInfluenceService.php,39,確認済み,問題なし,,cell一括取得+座標index+batch UPDATE/INSERT済,PG成熟1case。最大World計画未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+phase-04,nation_economy,product/app/Application/CompleteTurnEngine.php,189,確認済み,改善候補,"T01,T04,T05",Nごと再取得/food2PSELECT/容量resolver反復,PG成熟1case。複数Nation未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+phase-05,resource_sales,product/app/Application/CompleteTurnEngine.php,883,確認済み,改善候補,"T01,T05",balance/policy/escrowはbatch済。容量resolver3SELECT/N,PG成熟1case。overflow/escrow別case未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+phase-06,development_commands,product/app/Application/CompleteTurnEngine.php,155,確認済み,別担当,command audit,DomesticCommandExecutorへdispatch後heartbeat+地下snapshot再読取,command担当の詳細台帳を併用,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+phase-07,process_cells,product/app/Application/CompleteTurnEngine.php,529,確認済み,改善候補,"T02,T03,T06,T07,T08,T10",3C pass+各種戦闘/経済、局所候補複数,PG成熟1case/純粋CPU3probe,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+phase-08,settle_deferred_effects,product/app/Application/CompleteTurnEngine.php,778,確認済み,問題なし,,同盟資金/制裁。asset容量catalog候補は共通に含む,PG成熟1case。制裁大量未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+phase-09,global_disasters,product/app/Application/DisasterTurnService.php,49,確認済み,改善候補,"T06,T09",災害halo必要時load、world spawn/船/treasure/通常monster,PG成熟1case。各災害forced測定未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+phase-10,aggregate_nations,product/app/Application/CompleteTurnEngine.php,793,確認済み,改善候補,T12,groupBy集計済。changed chunkは1件ずつUPDATE,PG成熟1caseで16chunkUPDATE,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+phase-11,enforce_capacities,product/app/Application/CompleteTurnEngine.php,984,確認済み,改善候補,"T01,T05,T06",trading settlement後live容量再解決/overflow,PG成熟1case。listing大量未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+phase-12,finalize_turn,product/app/Application/CompleteTurnEngine.php,1155,確認済み,改善候補,"T06,T11",XP/charm/award/ecopo/lifecycle/karma/count/summary,PG成熟1case。100Turn周期境界未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+runner,run/retry/executeAttempt,product/app/Application/TurnRunner.php,41,確認済み,問題なし,,same-session/advisory lock/root rollbackは維持。各attempt新RNG/state,既存設計/回帰source確認。故障注入未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+order,stable/shuffled IDs,product/app/Domain/Turn/TurnOrderService.php,12,確認済み,問題なし,,stable query後shuffle。nation重複queryは低固定cost,RNG純粋microbench,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+rng,integer/shuffle,product/app/Domain/Turn/DeterministicRandomStream.php,34,確認済み,改善候補,T10,HMAC block/substring/unpack、unbiased rejection,100kdraw3round+10k境界一致,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+rng-factory,label derivation/cache,product/app/Domain/Turn/TurnRandomStreamFactory.php,151,確認済み,問題なし,,cache済ラベルもUTF8検証、19ms/100kcalls。低優先,純粋microbench。fullTurn頻度未集計,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+state,snapshots/indices/ledgers,product/app/Domain/Turn/TurnState.php,1,確認済み,問題なし,,多くはarray-key lookup、private turn state。globalcache化しない,静的。全state境界未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+economy-inputs,facility/group/population,product/app/Application/CompleteTurnEngine.php,362,確認済み,問題なし,,施設/人口batch read済。再読取はphase mutationを観測,PG成熟1case,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+economy-math,food/workers/industrial,product/app/Domain/Economy/NationEconomyCalculator.php,1,確認済み,問題なし,,純粋O(施設数)、definition count小。SQLなし,静的構造確認。組合せ未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+food-planner,nutrition plan,product/app/Domain/Economy/FoodConsumptionPlanner.php,1,確認済み,問題なし,,純粋O(P)、優先順/整数栄養,静的構造確認,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+undersea-maintenance,city/fire station,product/app/Application/CompleteTurnEngine.php,430,確認済み,問題なし,,施設順/支払と飢饉marker維持。balance書込は仕様,PG成熟では施設なし。dynamic未確認,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+power,generation/pizzeria/fuel,product/app/Application/PowerEconomyTurnService.php,33,確認済み,改善候補,"T01,T05",対象施設0はearly return、対象あり容量2calls/N,static。power対象fixture未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+food-overflow,after nutrition/live caps,product/app/Application/FoodOverflowResolver.php,80,確認済み,改善候補,"T01,T05",再lock/容量sameチェック/escrowは正当性境界,PG成熟1case。上限超分岐未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+capacity,world/source/catalog,product/app/Domain/Economy/NationCapacityResolver.php,27,確認済み,改善候補,"T01,T05",v41で3SELECT/resolve+42itemvalidate,catalog純粋測定。resolverPG差分未実装,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+asset-credit,money/food/resources,product/app/Domain/Economy/CapacityBoundedAssetService.php,21,確認済み,改善候補,"T01,T05",nested transactionsとfresh lock。escrowbatch API既存,静的。concurrency未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+oil,production/depletion,product/app/Application/CompleteTurnEngine.php,1452,確認済み,改善候補,T03,1油田Nation1+残高2SELECT/UPDATE1/event1,static SQL数。PG未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+population,growth/stage/famine,product/app/Application/CompleteTurnEngine.php,1633,確認済み,改善候補,T06,stage+growth double save。famine2event/被害cell,PG成熟stage900/2UPDATE各900,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+forest,quantity growth,product/app/Application/CompleteTurnEngine.php,1518,確認済み,改善候補,T06,成長cell1件1UPDATE。routineはsummary済,PG成熟fixture含む,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+fire-ground,fire/protection/riot,product/app/Application/DisasterTurnService.php,577,確認済み,問題なし,,adjacent保護は座標index/6neighbors、SQL反復なし,PG成熟一部。forcedfire未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+fire-undersea,station candidates,product/app/Application/DisasterTurnService.php,678,確認済み,改善候補,T02,毎成立火災で全Csort→scan。radius2=19候補,9216cell scalar index probe,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+disaster-index,coordinate/cells,product/app/Application/DisasterMutableCellIndex.php,31,確認済み,改善候補,T02,cellAt O(1)、cells() O(C logC),actual class+model stub microbench,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+monster,prepass/normal move/trample,product/app/Application/MonsterTurnService.php,40,確認済み,改善候補,T06,occupancy O(1)/definition batch済。移動1件ずつ保存,PG成熟1case。複数monster/sea未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+monster-index,occupancy/HP/move sync,product/app/Domain/Monster/MonsterTurnBatch.php,1,確認済み,問題なし,,bidirectional array index、移動先順の複数行動維持,静的。wholeTurn成熟1case,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+monster-damage,lock/damage/reward,product/app/Application/MonsterDamageService.php,45,確認済み,問題なし,,authoritative fresh host/monster lock+events/assets。cacheで置換しない,source確認。kill大量profile未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+monster-removal,batch sync/remove,product/app/Application/MonsterRemovalService.php,32,確認済み,問題なし,,turn batch共有/terrain removal cache同期済,source確認。故障注入未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+monster-definition,current resolution,product/app/Application/CurrentMonsterDefinitionResolver.php,19,確認済み,問題なし,,rulesetごとdefinition map再利用済,source確認。設定差し替え未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+ship,move/fuel/attack/reward,product/app/Application/SurfaceShipTurnService.php,56,確認済み,改善候補,T07,batch occupancy/port、stopped warship重複Nation修正済,source/既存履歴確認。船fixturePG未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+ship-index,occupancy/processed guard,product/app/Domain/Ship/SurfaceShipTurnBatch.php,1,確認済み,問題なし,,O(1) map/processed guard,静的,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+ship-visibility,land/ship radius,product/app/Application/SurfaceVisibilityService.php,21,確認済み,改善候補,T07,探索船ごとの全C bounds/land/ships読取,静的。視界変化のdynamic未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+ship-exploration,nearest treasure,product/app/Application/SurfaceShipTurnService.php,317,確認済み,改善候補,T07,全T取得+TlogTsort。min比較でTへ,既報残件照合。PG未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+missile,base/shot/impact/defense,product/app/Application/MissileImpactResolver.php,100,確認済み,改善候補,T06,防衛index済、着弾cellrefresh複数/shotごとstate write,source。既存shot数性能test未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+bow,pre normal monster attack,product/app/Application/SecretaryBowAttackService.php,41,確認済み,改善候補,T08,B*M*(defense)候補scan。命中後HP/集合更新,静的。bow多数測定なし,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+karma,snapshots/alliance/sanctions/final,product/app/Application/KarmaTurnService.php,23,確認済み,改善候補,T06,N毎fresh lock+event。snapshotはWorld bulk,PG成熟1case。sanctions未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+weather,draw/persist/cache,product/app/Application/SeaAreaWeatherService.php,18,確認済み,問題なし,,1回bulk chunk SELECT/upsert。2回目はstatecache,PG成熟1case,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+weather-effects,typhoon/meteor/huge meteor,product/app/Application/DisasterTurnService.php,173,確認済み,改善候補,T06,affected areas+halo bulk load済。被害event/writeは逐次,PG成熟1case。forced各災害未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+disaster-ordinary,earthquake/tsunami/eruption,product/app/Application/DisasterTurnService.php,723,確認済み,改善候補,T06,必要radiusだけload、隣接lookupはindex済,静的。各強制fixture未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+subsidence,frozen snapshot plans,product/app/Application/DisasterTurnService.php,272,確認済み,改善候補,T09,成立K Nationごと全Cscan。freezeは保持,静的。多Nation同時沈下未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+world-spawn,sea monster,product/app/Application/MonsterWorldSpawnService.php,38,確認済み,問題なし,,trigger前land集計、成立時候補。全C loadは条件付き,静的。海怪獣出現PG未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+natural-monster,eligible Nation/rank2,product/app/Application/MonsterSpawnService.php,41,確認済み,問題なし,,eligible Nation/settlementに絞る既存最適化済,静的。既存性能test source確認,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+npc-ship,weighted spawn/near ports,product/app/Application/NpcShipSpawnService.php,24,確認済み,問題なし,,成立opportunityだけbounded rings/read。multi成功cacheは最新占有注意,静的。multi spawn未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+treasure,spawn/create/collect,product/app/Application/BuriedTreasureService.php,26,確認済み,改善候補,T07,成功draw時candidate全件load、全World Tは探索再読取候補,静的。多数spawn PG未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+aggregate,population/land/facility,product/app/Application/CompleteTurnEngine.php,793,確認済み,問題なし,,population/landgroup+facility1pass。phase変化再読取必要,PG成熟1case,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+chunk-version,changed chunks,product/app/Application/CompleteTurnEngine.php,863,確認済み,改善候補,T12,ordered FOR UPDATE後chunk数分UPDATE,PG成熟16UPDATE実測,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+trading-settle,sale/expiry/NPC relist,product/app/Application/TradingPostTurnService.php,43,確認済み,改善候補,"T01,T05,T06",listingごと権限/asset解決、shared seller calc済,静的。大量listing動的未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+secretary,load/flush XP/charm,product/app/Application/SecretaryTurnService.php,35,確認済み,改善候補,T01,snapshot batch/charms usage bulk update済。catalog開始1回,PG成熟1case。dormant charm既修正source,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+demographic-xp,high water/loss award,product/app/Application/SecretaryDemographicExperienceService.php,21,確認済み,問題なし,,Nation batchlock。変化だけsave。重複award guard,PG成熟1case,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+lifecycle,resume/heartbeat/finalize,product/app/Application/NationLifecycleService.php,42,確認済み,改善候補,T11,collapseだけにfull status projection。state/資産順は保持,PG成熟1case。全復帰/abandon未実行,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+lifecycle-status,full status for collapse,product/app/Application/NationBasicStatusProjection.php,43,確認済み,改善候補,T11,used2fieldsに対しWorld/施設/地下/土地も計算,source。数NationPG未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+award,condition/100turn/cycle,product/app/Application/AwardTurnFinalizer.php,27,確認済み,問題なし,,one-time既存award batchread。周期だけcount/grant,PG成熟condition1件。周期境界未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+monster-cycle,atomic increment/count/initialize,product/app/Application/MonsterKillCycleService.php,25,確認済み,問題なし,,atomic upsert。100Turn初期化N INSERTは低頻度候補だが優先低,source。cycle大量測定なし,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+ecopo,discard credit/exchange,product/app/Application/EcopoService.php,21,確認済み,問題なし,,positiveだけcredit、exchange対象だけlock/save,PG成熟0exchange。大量drop未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+monster-count,world/nation snapshot,product/app/Application/WorldMonsterCountSnapshot.php,25,確認済み,問題なし,,alive monsters+related cells batch read/definition memo,PG成熟1monster。SQL集約案は可視owner解釈維持要,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+summary,start/end/public events,product/app/Application/CompleteTurnEngine.php,1224,確認済み,改善候補,T06,population/foodgroup済、turn.summary逐次INSERT,PG成熟1Nation,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+underground-facilities,current effects/snapshots,product/app/Application/Underground/UndergroundFacilityBenefits.php,106,確認済み,改善候補,T11,公式turnはbatchsnapshot済。status live farm/factory別読取,source。施設多数PG未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16
+collection,idempotent discovery,product/app/Application/CollectionRegistrar.php,24,確認済み,問題なし,,atomic insert select ON CONFLICT、乱数なし,source。多数hitのdedupe未測定,2e93ec918774ad64d787aba99fc59a7bc3e54d16

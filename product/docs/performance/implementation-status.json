@@ -1,0 +1,895 @@
+{
+  "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "captured_at": "2026-10-31T13:59:27.413245+00:00",
+  "independent_reviews": "no additional P0/P1/P2 in reviewed scopes; see implementation-reviews.md",
+  "implementations": [
+    {
+      "number": 352,
+      "label": "bulk",
+      "branch": "codex/perf-bulk-command-plan-20261031",
+      "head": "bc285270183123ea76e89a03462f7d38dfcdb37e",
+      "pr_url": "https://github.com/Mamiki765/hakoniwa-world/pull/352",
+      "run": {
+        "conclusion": "success",
+        "headSha": "bc285270183123ea76e89a03462f7d38dfcdb37e",
+        "status": "completed",
+        "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330",
+        "databaseId": 41207185330,
+        "jobs": [
+          {
+            "conclusion": "success",
+            "name": "PHPUnit shard plan",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554563315"
+          },
+          {
+            "conclusion": "success",
+            "name": "Composer dependencies",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554563392"
+          },
+          {
+            "conclusion": "success",
+            "name": "documentation",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554563405"
+          },
+          {
+            "conclusion": "success",
+            "name": "frontend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554563417"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend-static",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657680"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 03/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657772"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 04/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657773"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 07/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657783"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 10/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657795"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 02/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657806"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 05/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657813"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 13/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657815"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 12/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657851"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 06/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657852"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 16/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657861"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 14/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657864"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 08/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657874"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 01/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657881"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 09/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657882"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 11/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657906"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 15/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124554657964"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330/job/124555155040"
+          }
+        ]
+      }
+    },
+    {
+      "number": 353,
+      "label": "catalog",
+      "branch": "codex/perf-secretary-item-catalog-20261031",
+      "head": "c33263dc018a4611d1973e8be327cdcd4835ac5e",
+      "pr_url": "https://github.com/Mamiki765/hakoniwa-world/pull/353",
+      "run": {
+        "conclusion": "success",
+        "headSha": "c33263dc018a4611d1973e8be327cdcd4835ac5e",
+        "status": "completed",
+        "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143",
+        "databaseId": 41207234143,
+        "jobs": [
+          {
+            "conclusion": "success",
+            "name": "Composer dependencies",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554700976"
+          },
+          {
+            "conclusion": "success",
+            "name": "documentation",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554701090"
+          },
+          {
+            "conclusion": "success",
+            "name": "frontend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554701101"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit shard plan",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554701397"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend-static",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554771707"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 04/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787516"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 03/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787518"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 05/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787526"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 12/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787538"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 14/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787549"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 09/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787552"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 16/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787568"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 08/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787577"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 01/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787578"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 02/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787597"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 07/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787602"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 11/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787606"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 13/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787617"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 15/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787666"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 06/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787701"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 10/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124554787708"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207234143/job/124555452753"
+          }
+        ]
+      }
+    },
+    {
+      "number": 354,
+      "label": "boost",
+      "branch": "codex/perf-boost-series-projection-20261031",
+      "head": "60d65c66f5ee0b6798bc68351201aa233b04a3f8",
+      "pr_url": "https://github.com/Mamiki765/hakoniwa-world/pull/354",
+      "run": {
+        "conclusion": "success",
+        "headSha": "60d65c66f5ee0b6798bc68351201aa233b04a3f8",
+        "status": "completed",
+        "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656",
+        "databaseId": 41207464656,
+        "jobs": [
+          {
+            "conclusion": "success",
+            "name": "documentation",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555373814"
+          },
+          {
+            "conclusion": "success",
+            "name": "frontend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555373942"
+          },
+          {
+            "conclusion": "success",
+            "name": "Composer dependencies",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555373956"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit shard plan",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555373989"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend-static",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436009"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 05/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436118"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 07/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436122"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 04/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436148"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 06/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436152"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 09/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436178"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 10/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436180"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 14/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436201"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 11/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436207"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 13/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436208"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 02/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436211"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 16/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436216"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 15/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436217"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 12/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436226"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 03/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436248"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 08/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436275"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 01/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555436280"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656/job/124555934483"
+          }
+        ]
+      }
+    },
+    {
+      "number": 355,
+      "label": "turn",
+      "branch": "codex/perf-fire-station-neighbors-20261031",
+      "head": "69a5a038a21b7b2219d9ae87f125e8e0cb6c564e",
+      "pr_url": "https://github.com/Mamiki765/hakoniwa-world/pull/355",
+      "run": {
+        "conclusion": "success",
+        "headSha": "69a5a038a21b7b2219d9ae87f125e8e0cb6c564e",
+        "status": "completed",
+        "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436",
+        "databaseId": 41207516436,
+        "jobs": [
+          {
+            "conclusion": "success",
+            "name": "frontend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555523431"
+          },
+          {
+            "conclusion": "success",
+            "name": "Composer dependencies",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555523598"
+          },
+          {
+            "conclusion": "success",
+            "name": "documentation",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555523647"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit shard plan",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555523655"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend-static",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555577193"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 11/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598761"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 12/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598770"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 09/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598771"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 05/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598774"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 07/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598778"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 10/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598786"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 03/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598807"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 04/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598813"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 02/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598815"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 15/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598816"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 08/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598829"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 16/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598838"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 01/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598858"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 13/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598864"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 06/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598870"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 14/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124555598881"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436/job/124556219109"
+          }
+        ]
+      }
+    },
+    {
+      "number": 356,
+      "label": "battle",
+      "branch": "codex/perf-underground-catalog-20261031",
+      "head": "7aa89e1058416da5b7cc3b65b65a7cb3816deb83",
+      "pr_url": "https://github.com/Mamiki765/hakoniwa-world/pull/356",
+      "run": {
+        "conclusion": "success",
+        "headSha": "7aa89e1058416da5b7cc3b65b65a7cb3816deb83",
+        "status": "completed",
+        "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209",
+        "databaseId": 41207563209,
+        "jobs": [
+          {
+            "conclusion": "success",
+            "name": "Composer dependencies",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555659448"
+          },
+          {
+            "conclusion": "success",
+            "name": "documentation",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555659622"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit shard plan",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555659713"
+          },
+          {
+            "conclusion": "success",
+            "name": "frontend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555659724"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend-static",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555779226"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 03/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831142"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 04/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831149"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 12/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831156"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 15/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831158"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 01/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831159"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 08/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831162"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 16/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831180"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 02/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831194"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 11/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831222"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 09/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831229"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 14/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831230"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 07/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831231"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 06/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831232"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 10/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831235"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 13/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831240"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 05/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124555831266"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207563209/job/124556634554"
+          }
+        ]
+      }
+    },
+    {
+      "number": 357,
+      "label": "command",
+      "branch": "codex/perf-command-response-20261031",
+      "head": "86243ae01f7671b9dad9fd450591a04b68afaec8",
+      "pr_url": "https://github.com/Mamiki765/hakoniwa-world/pull/357",
+      "run": {
+        "conclusion": "success",
+        "headSha": "86243ae01f7671b9dad9fd450591a04b68afaec8",
+        "status": "completed",
+        "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219",
+        "databaseId": 41207759219,
+        "jobs": [
+          {
+            "conclusion": "success",
+            "name": "documentation",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556231748"
+          },
+          {
+            "conclusion": "success",
+            "name": "frontend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556231981"
+          },
+          {
+            "conclusion": "success",
+            "name": "Composer dependencies",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556232025"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit shard plan",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556232063"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend-static",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326612"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 06/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326757"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 03/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326768"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 11/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326786"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 08/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326810"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 05/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326814"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 14/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326815"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 07/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326826"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 04/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326830"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 01/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326835"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 09/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326842"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 10/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326843"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 15/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326845"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 02/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326853"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 12/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326855"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 13/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326857"
+          },
+          {
+            "conclusion": "success",
+            "name": "PHPUnit 16/16",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556326863"
+          },
+          {
+            "conclusion": "success",
+            "name": "backend",
+            "status": "completed",
+            "url": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207759219/job/124556967121"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+    "runtime": "8.5.8",
+    "cells": 9216,
+    "successful_undersea_fire_candidate_checks_per_round": 50,
+    "milliseconds": {
+        "full_sort": [
+            326.342165,
+            347.451597,
+            292.315744
+        ],
+        "radius_index": [
+            1.371598,
+            1.385694,
+            1.161402
+        ]
+    },
+    "candidate_ids": [
+        4561,
+        4656,
+        4658
+    ],
+    "limitation": "CPU scalar-model probe only; no Eloquent, SQL, finance, charm, monster or gameplay assertion"
+}

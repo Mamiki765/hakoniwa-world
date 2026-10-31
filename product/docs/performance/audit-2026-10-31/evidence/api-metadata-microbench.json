@@ -1,0 +1,43 @@
+{
+    "type": "isolated_php_decoder_microbenchmark",
+    "php": "8.5.8",
+    "source_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "source_file_sha256": "88f136d1a100d2bbba15e7a1377f887af4a4a3cb0df4b41f31be48ffb5c21400",
+    "events": 1000,
+    "bytes_per_event": 1626,
+    "before": [
+        {
+            "elapsed_ms": 25.347572,
+            "json_decodes": 3000,
+            "checksum": 6000
+        },
+        {
+            "elapsed_ms": 24.89282,
+            "json_decodes": 3000,
+            "checksum": 6000
+        },
+        {
+            "elapsed_ms": 25.50572,
+            "json_decodes": 3000,
+            "checksum": 6000
+        }
+    ],
+    "after": [
+        {
+            "elapsed_ms": 8.655272,
+            "json_decodes": 1000,
+            "checksum": 6000
+        },
+        {
+            "elapsed_ms": 7.883347,
+            "json_decodes": 1000,
+            "checksum": 6000
+        },
+        {
+            "elapsed_ms": 9.193873,
+            "json_decodes": 1000,
+            "checksum": 6000
+        }
+    ],
+    "limits": "Synthetic payload; exact decoder only. Excludes DB, HTTP, all other projection work and production load. No API latency claim."
+}

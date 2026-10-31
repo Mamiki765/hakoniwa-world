@@ -1,0 +1,21 @@
+vite v8.1.5 building client environment for production...
+[2K
+transforming...✓ 149 modules transformed.
+rendering chunks...
+computing gzip size...
+../frontend-split-build/assets/skb_bg_h1-4CkLZ84n.png                  0.41 kB
+../frontend-split-build/assets/skb_background-YYwQ7eCu.gif             0.56 kB
+../frontend-split-build/assets/atm_mmji-D1r3JpzM.gif                   0.96 kB
+../frontend-split-build/assets/atm_bg_title-BsMBHG6J.gif               1.03 kB
+../frontend-split-build/assets/skb_bg_title-CdCcEWhU.gif               1.32 kB
+../frontend-split-build/manifest.json                                  2.81 kB │ gzip:   0.57 kB
+../frontend-split-build/assets/atm_background-CFPA_Bkh.png            22.53 kB
+../frontend-split-build/assets/underground-placeholder-CvZ_hZ09.jpg  217.45 kB
+../frontend-split-build/assets/UndergroundPanel-BwZhEhS2.css           5.38 kB │ gzip:   1.43 kB
+../frontend-split-build/assets/app-rQDO4sOh.css                       10.78 kB │ gzip:   2.64 kB
+../frontend-split-build/assets/manual-BSpoHFRL.css                    19.37 kB │ gzip:   4.62 kB
+../frontend-split-build/assets/app-BUObCw2V.css                      199.84 kB │ gzip:  36.18 kB
+../frontend-split-build/assets/UndergroundPanel-BUlV6QzO.js          252.38 kB │ gzip:  73.47 kB
+../frontend-split-build/assets/app-BqPpAR7A.js                       395.50 kB │ gzip: 125.97 kB
+
+✓ built in 1.21s

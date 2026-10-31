@@ -1,0 +1,13 @@
+{
+  "source_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "notes_sha": "b78efc726646bc196534e8627755efc4b541e038",
+  "composer_lock_sha256": "0703880618c3d85c9aee120e3066897b4ca686b6be1ba3cdf2d043fb28d95fba",
+  "excluded": [
+    ".env*",
+    "archive",
+    "vendor",
+    "node_modules",
+    "public/build"
+  ],
+  "purpose": "isolated short measurements only; no product mutation"
+}

@@ -1,0 +1,28 @@
+{
+  "node": "v24.19.0",
+  "kind": "synthetic scalar loop from HexMap.visiblePositioned; not Vue/DOM/browser FPS",
+  "rows": [
+    {
+      "cells": 3600,
+      "panEvents": 120,
+      "predicateEvaluationsPerRound": 432000,
+      "samplesMs": [
+        9.096544999999999,
+        4.808515999999997,
+        5.083601999999999
+      ],
+      "matches": 265995
+    },
+    {
+      "cells": 9216,
+      "panEvents": 120,
+      "predicateEvaluationsPerRound": 1105920,
+      "samplesMs": [
+        13.077360000000006,
+        14.029606000000001,
+        13.279791000000003
+      ],
+      "matches": 266340
+    }
+  ]
+}

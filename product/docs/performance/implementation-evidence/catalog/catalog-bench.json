@@ -1,0 +1,138 @@
+{
+    "php": "8.5.8",
+    "opcache_cli": "0",
+    "ruleset": "hakoniwa-2s-plus-v41",
+    "item_count": 42,
+    "baseline_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "baseline_loader": "Full fixed source renamed to an uncached subclass; all base constants retained; no application\/DB boot.",
+    "results": {
+        "definitions": {
+            "before": {
+                "calls": 5000,
+                "samples_ms": [
+                    215.379853,
+                    162.099083,
+                    178.928188
+                ],
+                "median_ms": 178.928188,
+                "output_hashes": [
+                    "c9efebbd0b9189bf74d4feaa0057c07b734fef33adc9969f012e3b89d50c21b3",
+                    "c9efebbd0b9189bf74d4feaa0057c07b734fef33adc9969f012e3b89d50c21b3",
+                    "c9efebbd0b9189bf74d4feaa0057c07b734fef33adc9969f012e3b89d50c21b3"
+                ]
+            },
+            "after": {
+                "calls": 5000,
+                "samples_ms": [
+                    0.295352,
+                    0.246575,
+                    0.265218
+                ],
+                "median_ms": 0.265218,
+                "output_hashes": [
+                    "c9efebbd0b9189bf74d4feaa0057c07b734fef33adc9969f012e3b89d50c21b3",
+                    "c9efebbd0b9189bf74d4feaa0057c07b734fef33adc9969f012e3b89d50c21b3",
+                    "c9efebbd0b9189bf74d4feaa0057c07b734fef33adc9969f012e3b89d50c21b3"
+                ]
+            },
+            "ratio_before_over_after": 674.6457178622869
+        },
+        "lookup": {
+            "before": {
+                "calls": 5000,
+                "samples_ms": [
+                    170.105508,
+                    223.8888,
+                    210.773431
+                ],
+                "median_ms": 210.773431,
+                "output_hashes": [
+                    "59b98681dca04cef742d12b1a4b60ad5c87b0af28cf1b555b2fd4a55fcebf77f",
+                    "59b98681dca04cef742d12b1a4b60ad5c87b0af28cf1b555b2fd4a55fcebf77f",
+                    "59b98681dca04cef742d12b1a4b60ad5c87b0af28cf1b555b2fd4a55fcebf77f"
+                ]
+            },
+            "after": {
+                "calls": 5000,
+                "samples_ms": [
+                    0.453953,
+                    0.47568,
+                    0.465748
+                ],
+                "median_ms": 0.465748,
+                "output_hashes": [
+                    "59b98681dca04cef742d12b1a4b60ad5c87b0af28cf1b555b2fd4a55fcebf77f",
+                    "59b98681dca04cef742d12b1a4b60ad5c87b0af28cf1b555b2fd4a55fcebf77f",
+                    "59b98681dca04cef742d12b1a4b60ad5c87b0af28cf1b555b2fd4a55fcebf77f"
+                ]
+            },
+            "ratio_before_over_after": 452.54822564992224
+        },
+        "category_limits": {
+            "before": {
+                "calls": 1000,
+                "samples_ms": [
+                    832.023448,
+                    876.557634,
+                    872.399536
+                ],
+                "median_ms": 872.399536,
+                "output_hashes": [
+                    "4824cec215255ba44549aab37ac4cf2db636f6522e8bff79f7ae571062411682",
+                    "4824cec215255ba44549aab37ac4cf2db636f6522e8bff79f7ae571062411682",
+                    "4824cec215255ba44549aab37ac4cf2db636f6522e8bff79f7ae571062411682"
+                ]
+            },
+            "after": {
+                "calls": 1000,
+                "samples_ms": [
+                    28.004461,
+                    27.643069,
+                    29.699289
+                ],
+                "median_ms": 28.004461,
+                "output_hashes": [
+                    "4824cec215255ba44549aab37ac4cf2db636f6522e8bff79f7ae571062411682",
+                    "4824cec215255ba44549aab37ac4cf2db636f6522e8bff79f7ae571062411682",
+                    "4824cec215255ba44549aab37ac4cf2db636f6522e8bff79f7ae571062411682"
+                ]
+            },
+            "ratio_before_over_after": 31.152163078589517
+        },
+        "validated_effect_catalog": {
+            "before": {
+                "calls": 500,
+                "samples_ms": [
+                    1464.134165,
+                    1325.441763,
+                    1088.561886
+                ],
+                "median_ms": 1325.441763,
+                "output_hashes": [
+                    "87f75a2526be99e28129ab29ca9322f7a467e3e31dd44db1a39dc5d9851480ce",
+                    "87f75a2526be99e28129ab29ca9322f7a467e3e31dd44db1a39dc5d9851480ce",
+                    "87f75a2526be99e28129ab29ca9322f7a467e3e31dd44db1a39dc5d9851480ce"
+                ]
+            },
+            "after": {
+                "calls": 500,
+                "samples_ms": [
+                    111.172772,
+                    152.647497,
+                    122.639087
+                ],
+                "median_ms": 122.639087,
+                "output_hashes": [
+                    "87f75a2526be99e28129ab29ca9322f7a467e3e31dd44db1a39dc5d9851480ce",
+                    "87f75a2526be99e28129ab29ca9322f7a467e3e31dd44db1a39dc5d9851480ce",
+                    "87f75a2526be99e28129ab29ca9322f7a467e3e31dd44db1a39dc5d9851480ce"
+                ]
+            },
+            "ratio_before_over_after": 10.807661695981151
+        }
+    },
+    "full_output_hashes": {
+        "before": "be916eefd31a4cdfd76aa8b464004f9c2592007ead66e074964e67858a552a94",
+        "after": "be916eefd31a4cdfd76aa8b464004f9c2592007ead66e074964e67858a552a94"
+    }
+}

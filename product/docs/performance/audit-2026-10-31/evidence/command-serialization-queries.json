@@ -1,0 +1,806 @@
+{
+    "kind": "current_code_isolated_pg_query_count",
+    "source_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "php": "8.5.8",
+    "fixture": "Debug32x32 synthetic World, one synthetic owner Nation; finance plans target the same capital facility",
+    "measurements": [
+        {
+            "queue_items": 1,
+            "distinct_fixed_targets": 1,
+            "elapsed_ms": 70.653088,
+            "all_select_and_write_queries": 17,
+            "target_cell_queries": 1,
+            "terrain_queries": 1,
+            "facility_queries": 1,
+            "queries": [
+                {
+                    "sql": "select * from \"nations\" where \"id\" = ? limit 1",
+                    "bindings": [
+                        "1"
+                    ],
+                    "time_ms": 0.5
+                },
+                {
+                    "sql": "select * from \"map_spaces\" where \"id\" = ? limit 1",
+                    "bindings": [
+                        "1"
+                    ],
+                    "time_ms": 0.22
+                },
+                {
+                    "sql": "select * from \"nation_memberships\" where \"user_id\" = ? and \"nation_id\" = ? and \"world_id\" = ? and \"role\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        1,
+                        1,
+                        "owner"
+                    ],
+                    "time_ms": 0.32
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.21
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 2.06
+                },
+                {
+                    "sql": "select * from \"nation_command_queues\" where \"nation_id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.28
+                },
+                {
+                    "sql": "select * from \"nation_command_queue_items\" where \"nation_command_queue_items\".\"nation_command_queue_id\" in (1) and \"status\" = ? order by \"queue_position\" asc",
+                    "bindings": [
+                        "queued"
+                    ],
+                    "time_ms": 0.4
+                },
+                {
+                    "sql": "select * from \"command_definitions\" where \"command_definitions\".\"id\" in (21)",
+                    "bindings": [],
+                    "time_ms": 0.21
+                },
+                {
+                    "sql": "select * from \"nations\" where \"nations\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.24
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 0.41
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 0.92
+                },
+                {
+                    "sql": "select * from \"map_spaces\" where \"map_spaces\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.32
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.35
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.21
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.2
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.59
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 1.97
+                }
+            ]
+        },
+        {
+            "queue_items": 30,
+            "distinct_fixed_targets": 1,
+            "elapsed_ms": 132.763864,
+            "all_select_and_write_queries": 104,
+            "target_cell_queries": 30,
+            "terrain_queries": 30,
+            "facility_queries": 30,
+            "queries": [
+                {
+                    "sql": "select * from \"nations\" where \"id\" = ? limit 1",
+                    "bindings": [
+                        "1"
+                    ],
+                    "time_ms": 0.4
+                },
+                {
+                    "sql": "select * from \"map_spaces\" where \"id\" = ? limit 1",
+                    "bindings": [
+                        "1"
+                    ],
+                    "time_ms": 0.21
+                },
+                {
+                    "sql": "select * from \"nation_memberships\" where \"user_id\" = ? and \"nation_id\" = ? and \"world_id\" = ? and \"role\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        1,
+                        1,
+                        "owner"
+                    ],
+                    "time_ms": 0.45
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.3
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 2.08
+                },
+                {
+                    "sql": "select * from \"nation_command_queues\" where \"nation_id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.29
+                },
+                {
+                    "sql": "select * from \"nation_command_queue_items\" where \"nation_command_queue_items\".\"nation_command_queue_id\" in (1) and \"status\" = ? order by \"queue_position\" asc",
+                    "bindings": [
+                        "queued"
+                    ],
+                    "time_ms": 0.56
+                },
+                {
+                    "sql": "select * from \"command_definitions\" where \"command_definitions\".\"id\" in (21)",
+                    "bindings": [],
+                    "time_ms": 0.36
+                },
+                {
+                    "sql": "select * from \"nations\" where \"nations\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.3
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 0.23
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 0.96
+                },
+                {
+                    "sql": "select * from \"map_spaces\" where \"map_spaces\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.23
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.4
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.24
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.27
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.41
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.33
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.23
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.37
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.21
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.18
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.49
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.19
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.22
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.43
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.17
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.2
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.3
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.19
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.17
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.31
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.19
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.18
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.29
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.17
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.21
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.28
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.2
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.2
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.34
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.19
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.18
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.32
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.27
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.2
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.34
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.18
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.18
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.34
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.25
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.35
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.34
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.19
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.18
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.39
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.19
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.18
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.31
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.45
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.34
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.68
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.28
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.22
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.87
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.25
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.26
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 2.57
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.36
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.21
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.41
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 1.22
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.82
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.91
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.27
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.21
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.6
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.3
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.23
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 1.03
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.25
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.41
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.51
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.29
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.25
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.79
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.27
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.32
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.51
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.27
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.24
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.63
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.28
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.4
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.39
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.37
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.22
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.41
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.36
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.2
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and \"x\" = ? and \"y\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.41
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.21
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.23
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.39
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 1.77
+                }
+            ]
+        }
+    ],
+    "limits": "One test case, one request per Q=1\/Q=30. Current code only; elapsed includes route\/Laravel cold differences. No candidate patch or latency-speedup claim."
+}

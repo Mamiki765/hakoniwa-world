@@ -1,0 +1,41 @@
+{
+  "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "commit_sha": "86243ae01f7671b9dad9fd450591a04b68afaec8",
+  "branch": "codex/perf-command-response-20261031",
+  "worktree": "/workspace/hakoniwa-perf-command",
+  "worktree_clean_after_commit": true,
+  "changed_files": [
+    "product/app/Http/Controllers/Api/CommandQueueController.php",
+    "product/app/Application/CommandQuantitySemantics.php",
+    "product/tests/Feature/CommandQueueAndSalePolicyTest.php",
+    "product/docs/performance/command-response-batching-2026-10-31.md"
+  ],
+  "runtime": {"php": "8.5.8", "postgresql": "18.4", "database": "isolated synthetic test database"},
+  "functional_checks": {
+    "unique_tests_passed": 15,
+    "assertions_in_latest_passing_cases": 260,
+    "modified_representatives": {"tests": 3, "assertions": 52},
+    "compatibility": {"tests": 7, "assertions": 105},
+    "underground_slots": {"tests": 1, "assertions": 41},
+    "undersea_ship_scoped": {"tests": 4, "assertions": 62, "selected_files": 1, "selected_identifiers": 4},
+    "sql_probe": {"tests": 1, "assertions": 9},
+    "initial_failures": "Before the runtime patch, the new assertions detected 30 repeated target reads and two repeated monument label reads. A direct Undersea invocation was rejected during setup because reusable fixtures require the scoped dispatcher; those four cases subsequently passed through the dispatcher. Its missing isolated storage/framework/testing directory was created without disabling guards."
+  },
+  "static_checks": {
+    "phpstan": "Passed repository-equivalent Larastan level 6 on the two changed runtime files; external config only made canonical paths absolute for the isolated container.",
+    "pint": "Passed all three changed PHP files.",
+    "git_diff_check": "Passed."
+  },
+  "measurements": {
+    "fixture": "Debug32x32 World, one synthetic owner Nation, finance plans targeting one capital facility; one GET per Q=1/Q=30.",
+    "base_Q1": {"all_sql": 17, "target_cells": 1, "terrain": 1, "facility": 1},
+    "base_Q30": {"all_sql": 104, "target_cells": 30, "terrain": 30, "facility": 30},
+    "candidate_Q1": {"all_sql": 17, "target_cells": 1, "terrain": 1, "facility": 1},
+    "candidate_Q30": {"all_sql": 17, "target_cells": 1, "terrain": 1, "facility": 1},
+    "base_evidence": "/workspace/perf-audit-20261031/evidence/command-serialization-queries.json",
+    "candidate_evidence": "command-response-after-queries.json",
+    "limits": "Query-count observations only. No repeated latency benchmark, P95, production measurement, full suite, CI, or PHP8.5.12 run."
+  },
+  "not_performed": ["push", "pull request creation", "merge", "deploy", "production operations", "ruleset update", "schema change"],
+  "remaining_blockers": []
+}

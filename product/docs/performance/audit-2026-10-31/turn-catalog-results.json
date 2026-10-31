@@ -1,0 +1,12 @@
+{
+    "runtime": "8.5.8",
+    "ruleset": "hakoniwa-2s-plus-v41",
+    "item_count": 42,
+    "calls_per_round": 500,
+    "milliseconds": [
+        1119.244373,
+        1003.627747,
+        1001.558809
+    ],
+    "output_sha256": "96ee9b871139bbc152cd804f3facc674d0ad4813765605388d0bd7f51764d4f9"
+}
