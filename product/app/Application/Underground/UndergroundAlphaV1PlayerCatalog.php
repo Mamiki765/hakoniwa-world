@@ -32,15 +32,18 @@ use RuntimeException;
  *     drop_tier_key: string
  * }
  */
-final readonly class UndergroundAlphaV1PlayerCatalog
+final class UndergroundAlphaV1PlayerCatalog
 {
+    /** @var array<string, array{dependencies: array<mixed>, catalog: AlphaV1BuildCatalog}> */
+    private array $catalogs = [];
+
     public function __construct(
-        private AlphaV1CombatRules $rules,
-        private UndergroundBuildValidator $buildValidator,
-        private PriorityCombatAiConfiguration $aiConfiguration = new PriorityCombatAiConfiguration,
-        private UndergroundEquipmentCatalog $equipmentCatalog = new UndergroundEquipmentCatalog,
-        private UndergroundRuntimeCatalog $runtimeCatalog = new UndergroundRuntimeCatalog,
-        private UndergroundRuntimeEquipmentGenerator $generatedEquipment = new UndergroundRuntimeEquipmentGenerator,
+        private readonly AlphaV1CombatRules $rules,
+        private readonly UndergroundBuildValidator $buildValidator,
+        private readonly PriorityCombatAiConfiguration $aiConfiguration = new PriorityCombatAiConfiguration,
+        private readonly UndergroundEquipmentCatalog $equipmentCatalog = new UndergroundEquipmentCatalog,
+        private readonly UndergroundRuntimeCatalog $runtimeCatalog = new UndergroundRuntimeCatalog,
+        private readonly UndergroundRuntimeEquipmentGenerator $generatedEquipment = new UndergroundRuntimeEquipmentGenerator,
     ) {}
 
     public function growthIdentity(): string
@@ -667,36 +670,41 @@ final readonly class UndergroundAlphaV1PlayerCatalog
 
     public function explorationCatalog(): AlphaV1BuildCatalog
     {
-        $manifest = $this->laboratoryCatalog()->manifest();
-        foreach ($this->explorationConfig()['grounds'] as $ground) {
-            if (! is_array($ground) || ! is_array($ground['encounters'] ?? null)) {
-                throw new RuntimeException('Underground exploration enemy catalog is invalid.');
-            }
-            foreach ($ground['encounters'] as $key => $entry) {
-                if (! is_string($key) || ! is_array($entry) || ! is_array($entry['enemy'] ?? null)) {
+        $foundation = $this->laboratoryCatalog();
+        $grounds = $this->explorationConfig()['grounds'];
+
+        return $this->rememberCatalog('exploration', [$foundation, $grounds], function () use ($foundation, $grounds): AlphaV1BuildCatalog {
+            $manifest = $foundation->manifest();
+            foreach ($grounds as $ground) {
+                if (! is_array($ground) || ! is_array($ground['encounters'] ?? null)) {
                     throw new RuntimeException('Underground exploration enemy catalog is invalid.');
                 }
-                if (array_key_exists($key, $manifest['enemies'])) {
-                    if ($manifest['enemies'][$key] !== $entry['enemy']) {
+                foreach ($ground['encounters'] as $key => $entry) {
+                    if (! is_string($key) || ! is_array($entry) || ! is_array($entry['enemy'] ?? null)) {
                         throw new RuntimeException('Underground exploration enemy catalog is invalid.');
                     }
+                    if (array_key_exists($key, $manifest['enemies'])) {
+                        if ($manifest['enemies'][$key] !== $entry['enemy']) {
+                            throw new RuntimeException('Underground exploration enemy catalog is invalid.');
+                        }
 
-                    continue;
+                        continue;
+                    }
+                    $manifest['enemies'][$key] = $entry['enemy'];
                 }
-                $manifest['enemies'][$key] = $entry['enemy'];
-            }
-            $rare = $ground['rare_encounter'] ?? null;
-            if (is_array($rare) && is_string($rare['key'] ?? null) && is_array($rare['encounter']['enemy'] ?? null)) {
-                $key = $rare['key'];
-                $enemy = $rare['encounter']['enemy'];
-                if (array_key_exists($key, $manifest['enemies']) && $manifest['enemies'][$key] !== $enemy) {
-                    throw new RuntimeException('Underground rare exploration enemy catalog is invalid.');
+                $rare = $ground['rare_encounter'] ?? null;
+                if (is_array($rare) && is_string($rare['key'] ?? null) && is_array($rare['encounter']['enemy'] ?? null)) {
+                    $key = $rare['key'];
+                    $enemy = $rare['encounter']['enemy'];
+                    if (array_key_exists($key, $manifest['enemies']) && $manifest['enemies'][$key] !== $enemy) {
+                        throw new RuntimeException('Underground rare exploration enemy catalog is invalid.');
+                    }
+                    $manifest['enemies'][$key] = $enemy;
                 }
-                $manifest['enemies'][$key] = $enemy;
             }
-        }
 
-        return new AlphaV1BuildCatalog($manifest);
+            return new AlphaV1BuildCatalog($manifest);
+        });
     }
 
     /** @return array<string, mixed> */
@@ -850,36 +858,36 @@ final readonly class UndergroundAlphaV1PlayerCatalog
     public function trialCatalog(string $trialKey): AlphaV1BuildCatalog
     {
         $manifestPath = $this->runtimeCatalog->trial($trialKey)['balance_manifest'];
-        try {
-            $trial = json_decode(
-                file_get_contents(config_path($manifestPath)) ?: '',
-                true,
-                512,
-                JSON_THROW_ON_ERROR,
-            );
-        } catch (JsonException $exception) {
-            throw new RuntimeException("Underground {$trialKey} manifest is invalid.", previous: $exception);
-        }
-        if (! is_array($trial)
-            || ($trial['schema_version'] ?? null) !== 1
-            || ($trial['combat_identity'] ?? null) !== AlphaV1CombatRules::IDENTITY
-            || ! is_array($trial['skills'] ?? null)
-            || ! is_array($trial['statuses'] ?? null)
-            || ! is_array($trial['enemies'] ?? null)) {
-            throw new RuntimeException("Underground {$trialKey} manifest is invalid.");
-        }
+        $source = file_get_contents(config_path($manifestPath)) ?: '';
+        $foundation = $this->laboratoryCatalog();
 
-        $manifest = $this->laboratoryCatalog()->manifest();
-        foreach (['skills', 'statuses', 'enemies'] as $section) {
-            foreach ($trial[$section] as $key => $definition) {
-                if (! is_string($key) || ! is_array($definition) || array_key_exists($key, $manifest[$section])) {
-                    throw new RuntimeException("Underground {$trialKey} {$section} catalog is invalid.");
-                }
-                $manifest[$section][$key] = $definition;
+        return $this->rememberCatalog('trial:'.$trialKey, [$manifestPath, $source, $foundation], function () use ($trialKey, $source, $foundation): AlphaV1BuildCatalog {
+            try {
+                $trial = json_decode($source, true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException $exception) {
+                throw new RuntimeException("Underground {$trialKey} manifest is invalid.", previous: $exception);
             }
-        }
+            if (! is_array($trial)
+                || ($trial['schema_version'] ?? null) !== 1
+                || ($trial['combat_identity'] ?? null) !== AlphaV1CombatRules::IDENTITY
+                || ! is_array($trial['skills'] ?? null)
+                || ! is_array($trial['statuses'] ?? null)
+                || ! is_array($trial['enemies'] ?? null)) {
+                throw new RuntimeException("Underground {$trialKey} manifest is invalid.");
+            }
 
-        return new AlphaV1BuildCatalog($manifest);
+            $manifest = $foundation->manifest();
+            foreach (['skills', 'statuses', 'enemies'] as $section) {
+                foreach ($trial[$section] as $key => $definition) {
+                    if (! is_string($key) || ! is_array($definition) || array_key_exists($key, $manifest[$section])) {
+                        throw new RuntimeException("Underground {$trialKey} {$section} catalog is invalid.");
+                    }
+                    $manifest[$section][$key] = $definition;
+                }
+            }
+
+            return new AlphaV1BuildCatalog($manifest);
+        });
     }
 
     public function trialOneCatalog(): AlphaV1BuildCatalog
@@ -1155,21 +1163,37 @@ final readonly class UndergroundAlphaV1PlayerCatalog
 
     public function laboratoryCatalog(): AlphaV1BuildCatalog
     {
-        try {
-            $manifest = json_decode(
-                file_get_contents(config_path('underground/balance/foundation-v4.json')) ?: '',
-                true,
-                512,
-                JSON_THROW_ON_ERROR,
-            );
-        } catch (JsonException $exception) {
-            throw new RuntimeException('Underground alpha-v1 manifest is invalid.', previous: $exception);
-        }
-        if (! is_array($manifest)) {
-            throw new RuntimeException('Underground alpha-v1 manifest is invalid.');
-        }
+        // Compare the actual bytes, including when mtime/size are unchanged.
+        $source = file_get_contents(config_path('underground/balance/foundation-v4.json')) ?: '';
 
-        return new AlphaV1BuildCatalog($manifest);
+        return $this->rememberCatalog('foundation', [$source], static function () use ($source): AlphaV1BuildCatalog {
+            try {
+                $manifest = json_decode($source, true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException $exception) {
+                throw new RuntimeException('Underground alpha-v1 manifest is invalid.', previous: $exception);
+            }
+            if (! is_array($manifest)) {
+                throw new RuntimeException('Underground alpha-v1 manifest is invalid.');
+            }
+
+            return new AlphaV1BuildCatalog($manifest);
+        });
+    }
+
+    /**
+     * @param  array<mixed>  $dependencies
+     * @param  callable(): AlphaV1BuildCatalog  $build
+     */
+    private function rememberCatalog(string $key, array $dependencies, callable $build): AlphaV1BuildCatalog
+    {
+        $cached = $this->catalogs[$key] ?? null;
+        if ($cached !== null && $cached['dependencies'] === $dependencies) {
+            return $cached['catalog'];
+        }
+        $catalog = $build();
+        $this->catalogs[$key] = ['dependencies' => $dependencies, 'catalog' => $catalog];
+
+        return $catalog;
     }
 
     /** @return array<string, mixed> */
