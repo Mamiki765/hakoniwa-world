@@ -1,0 +1,260 @@
+{
+  "first_pair": {
+    "sample": "initial paired run; baseline then combined",
+    "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "combined_tree": "99585a57f9d48007a5581ddf6ae1b42554841c9e",
+    "probe_sha256": "9d8526aeced183520a935f748497802e67e2f03d5118a646f92e9c80e0c5c29b",
+    "fixture_equal": true,
+    "state_equal": true,
+    "turn_equal": true,
+    "battle_equal": true,
+    "input_hashes_equal": null,
+    "raw_response_hashes_equal": false,
+    "decoded_response_values_equal": true,
+    "mismatched_response_raw_hashes": [
+      "boost_admin"
+    ],
+    "response_member_order_difference": {
+      "path": "boost_admin",
+      "baseline_keys": [
+        "server_now",
+        "timezone",
+        "occurrences",
+        "uncompensated_turns",
+        "current_turn"
+      ],
+      "combined_keys": [
+        "server_now",
+        "timezone",
+        "uncompensated_turns",
+        "current_turn",
+        "occurrences"
+      ],
+      "decoded_values_equal": true
+    },
+    "compared_tables": 25,
+    "measurements": {
+      "queue_post": {
+        "baseline": {
+          "wall_ms": 111.464374,
+          "sql_count": 51
+        },
+        "combined": {
+          "wall_ms": 97.275725,
+          "sql_count": 51
+        }
+      },
+      "queue_bulk": {
+        "baseline": {
+          "wall_ms": 210.164911,
+          "sql_count": 185
+        },
+        "combined": {
+          "wall_ms": 209.11113,
+          "sql_count": 127
+        }
+      },
+      "queue_30_get": {
+        "baseline": {
+          "wall_ms": 86.91886,
+          "sql_count": 74
+        },
+        "combined": {
+          "wall_ms": 52.068845,
+          "sql_count": 16
+        }
+      },
+      "boost_admin": {
+        "baseline": {
+          "wall_ms": 9.494708,
+          "sql_count": 7
+        },
+        "combined": {
+          "wall_ms": 4.303441,
+          "sql_count": 3
+        }
+      },
+      "official_turn": {
+        "baseline": {
+          "wall_ms": 340.277248,
+          "sql_count": 228
+        },
+        "combined": {
+          "wall_ms": 764.004703,
+          "sql_count": 228
+        }
+      },
+      "queue_after_turn": {
+        "baseline": {
+          "wall_ms": 73.715281,
+          "sql_count": 72
+        },
+        "combined": {
+          "wall_ms": 54.145497,
+          "sql_count": 16
+        }
+      },
+      "real_exploration": {
+        "baseline": {
+          "wall_ms": 77.398563,
+          "sql_count": 39
+        },
+        "combined": {
+          "wall_ms": 164.988739,
+          "sql_count": 39
+        }
+      },
+      "exploration_replay": {
+        "baseline": {
+          "wall_ms": 25.49303,
+          "sql_count": 20
+        },
+        "combined": {
+          "wall_ms": 24.230584,
+          "sql_count": 20
+        }
+      }
+    },
+    "limits": "One paired run per version. Synthetic unlocked-profile fixture and trusted server-issued admission test adapter; no intro UI, real issuer, browser, production, concurrency or whole-workload claims. Auth tables are excluded. Turn timing fields are not gameplay comparisons.",
+    "input_fingerprint_note": "This first sample records fixture parameters but did not collect the five pre-operation table hashes added to the diagnostic pair."
+  },
+  "diagnostic_pair": {
+    "sample": "reverse-order CPU diagnostic pair; combined then baseline, instrumented equally",
+    "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "combined_tree": "99585a57f9d48007a5581ddf6ae1b42554841c9e",
+    "probe_sha256": "0a3d2112fffb7b73706786a0b1ba1cde4cc3ff5691ae418ea1aaaeb27429d575",
+    "fixture_equal": true,
+    "state_equal": true,
+    "turn_equal": true,
+    "battle_equal": true,
+    "input_hashes_equal": true,
+    "raw_response_hashes_equal": false,
+    "decoded_response_values_equal": true,
+    "mismatched_response_raw_hashes": [
+      "boost_admin"
+    ],
+    "response_member_order_difference": {
+      "path": "boost_admin",
+      "baseline_keys": [
+        "server_now",
+        "timezone",
+        "occurrences",
+        "uncompensated_turns",
+        "current_turn"
+      ],
+      "combined_keys": [
+        "server_now",
+        "timezone",
+        "uncompensated_turns",
+        "current_turn",
+        "occurrences"
+      ],
+      "decoded_values_equal": true
+    },
+    "compared_tables": 25,
+    "measurements": {
+      "queue_post": {
+        "baseline": {
+          "wall_ms": 79.041447,
+          "cpu_ms": 59.491,
+          "sql_count": 51
+        },
+        "combined": {
+          "wall_ms": 76.397609,
+          "cpu_ms": 56.894,
+          "sql_count": 51
+        }
+      },
+      "queue_bulk": {
+        "baseline": {
+          "wall_ms": 165.396864,
+          "cpu_ms": 98.043,
+          "sql_count": 185
+        },
+        "combined": {
+          "wall_ms": 119.166372,
+          "cpu_ms": 69.067,
+          "sql_count": 127
+        }
+      },
+      "queue_30_get": {
+        "baseline": {
+          "wall_ms": 81.234759,
+          "cpu_ms": 54.143,
+          "sql_count": 74
+        },
+        "combined": {
+          "wall_ms": 37.65377,
+          "cpu_ms": 30.6,
+          "sql_count": 16
+        }
+      },
+      "boost_admin": {
+        "baseline": {
+          "wall_ms": 5.486038,
+          "cpu_ms": 4.098,
+          "sql_count": 7
+        },
+        "combined": {
+          "wall_ms": 3.885121,
+          "cpu_ms": 3.141,
+          "sql_count": 3
+        }
+      },
+      "official_turn": {
+        "baseline": {
+          "wall_ms": 330.111518,
+          "cpu_ms": 238.751,
+          "sql_count": 228
+        },
+        "combined": {
+          "wall_ms": 290.169158,
+          "cpu_ms": 205.371,
+          "sql_count": 228
+        }
+      },
+      "queue_after_turn": {
+        "baseline": {
+          "wall_ms": 74.771491,
+          "cpu_ms": 49.56,
+          "sql_count": 72
+        },
+        "combined": {
+          "wall_ms": 30.885018,
+          "cpu_ms": 24.198,
+          "sql_count": 16
+        }
+      },
+      "real_exploration": {
+        "baseline": {
+          "wall_ms": 75.784904,
+          "cpu_ms": 62.612,
+          "sql_count": 39
+        },
+        "combined": {
+          "wall_ms": 59.264937,
+          "cpu_ms": 47.411,
+          "sql_count": 39
+        }
+      },
+      "exploration_replay": {
+        "baseline": {
+          "wall_ms": 14.982442,
+          "cpu_ms": 11.327,
+          "sql_count": 20
+        },
+        "combined": {
+          "wall_ms": 13.703792,
+          "cpu_ms": 9.363,
+          "sql_count": 20
+        }
+      }
+    },
+    "limits": "One paired run per version. Synthetic unlocked-profile fixture and trusted server-issued admission test adapter; no intro UI, real issuer, browser, production, concurrency or whole-workload claims. Auth tables are excluded. Turn timing fields are not gameplay comparisons."
+  },
+  "product_files_modified": false,
+  "product_findings": [],
+  "probe_setup_correction": "Initial external baseline probe required identity equality of Carbon objects; corrected to value equality before the final paired runs. Original failed log retained.",
+  "response_comparison": "JSON object member order is ignored for semantic equality; list/array order and all values remain exact. Boost admin alone changes object member ordering.",
+  "same_final_state_across_both_instrumentation_versions": true
+}

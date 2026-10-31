@@ -1,0 +1,26 @@
+scope: full
+total discovered files: 161
+shard count: 16
+shard 01/16 assigned files: 11
+shard 02/16 assigned files: 10
+shard 03/16 assigned files: 10
+shard 04/16 assigned files: 10
+shard 05/16 assigned files: 10
+shard 06/16 assigned files: 10
+shard 07/16 assigned files: 10
+shard 08/16 assigned files: 10
+shard 09/16 assigned files: 10
+shard 10/16 assigned files: 10
+shard 11/16 assigned files: 10
+shard 12/16 assigned files: 10
+shard 13/16 assigned files: 10
+shard 14/16 assigned files: 10
+shard 15/16 assigned files: 10
+shard 16/16 assigned files: 10
+fixture standard files: 108
+fixture reusable_surface files: 22
+fixture individual files: 31
+union count: 161
+duplicate count: 0
+missing count: 0
+unexpected count: 0

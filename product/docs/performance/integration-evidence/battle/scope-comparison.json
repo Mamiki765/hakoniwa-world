@@ -1,0 +1,16 @@
+{
+  "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "combined_tree": "99585a57f9d48007a5581ddf6ae1b42554841c9e",
+  "comparison": {
+    "catalog_hash": true,
+    "fight_hash": true,
+    "changed_hp_fight_hash": true,
+    "item_hash": true
+  },
+  "all_checks_base": true,
+  "all_checks_combined": true,
+  "database_connections": [
+    0,
+    0
+  ]
+}

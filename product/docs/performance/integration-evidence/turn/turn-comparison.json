@@ -1,0 +1,86 @@
+{
+  "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "combined_manifest": "../source-manifest.json",
+  "probe_sha256": "87e265729f33a78f857d43b1d7eef89fc471152383e841c52a2b625a6afdb279",
+  "input_identical": true,
+  "input_sha256": "2b675d65bf639d36b2fb9a338498fb60d26afd3876f91f28f8fa94b10529c14a",
+  "output_identical": true,
+  "output_sha256": "ddc0745ee94c9d9f6fa565fdd10a2d0a222ef0b86521549e06bd8d249ee0a109",
+  "all_table_digests_equal": true,
+  "captured_tables": 84,
+  "nonempty_tables": {
+    "auction_listings": 1,
+    "audit_events": 1132,
+    "command_definitions": 200,
+    "facility_definitions": 22,
+    "map_cells": 3600,
+    "map_chunks": 16,
+    "map_spaces": 1,
+    "monster_definitions": 55,
+    "monster_instances": 1,
+    "monster_occupancies": 1,
+    "monument_definitions": 4,
+    "nation_awards": 1,
+    "nation_capitals": 1,
+    "nation_creation_requests": 1,
+    "nation_memberships": 1,
+    "nation_resource_sale_policies": 6,
+    "nation_resources": 7,
+    "nations": 1,
+    "production_definitions": 15,
+    "resource_definitions": 7,
+    "ruleset_versions": 5,
+    "secretaries": 1,
+    "secretary_item_instances": 1,
+    "secretary_skills": 11,
+    "secretary_surface_states": 1,
+    "terrain_definitions": 7,
+    "turn_runs": 1,
+    "user_collection_entries": 1,
+    "world_generation_runs": 2,
+    "worlds": 1
+  },
+  "all_12_phase_metrics_equal": true,
+  "all_12_query_type_counts_equal": true,
+  "master_seed_equal": true,
+  "master_seed": "0000000000000000000000000000000000000000000000000000000000000000",
+  "rng_source_hashes_equal": true,
+  "rng_source_sha256": {
+    "DeterministicRandomStream": "4904ed92903ff7104cc9d2990ae794685dc08e21dfcb0e7c3ae5106c2a123d47",
+    "TurnRandomStreamFactory": "1c2f10addd4cea8d76a04c4ba760918debd285e10e8ba61c9a9319f3ad960aae"
+  },
+  "turn_audit_rows": 1131,
+  "turn_audit_identical": true,
+  "turn_audit_sha256": "90f46fa9df5ef4727995c0b8550c113e79d4b143022994a58c47e0eba3d54833",
+  "recorded_draw_fields": 211,
+  "recorded_draw_fields_equal": true,
+  "recorded_draw_sha256": "24a165890790e16a7498cf83ada3cc8e9c8676dceecf92f101bd0a73d4c27517",
+  "measurements": {
+    "baseline": {
+      "total_wall_ms": 3633.968,
+      "total_cpu_user_ms": 2134.738,
+      "total_cpu_system_ms": 228.094,
+      "total_queries": 3355,
+      "total_cpu_ms": 2362.832
+    },
+    "combined": {
+      "total_wall_ms": 3751.407,
+      "total_cpu_user_ms": 2277.113,
+      "total_cpu_system_ms": 214.58,
+      "total_queries": 3355,
+      "total_cpu_ms": 2491.693
+    }
+  },
+  "limitations": [
+    "One baseline and one combined reporting run; no statistical regression/speedup claim.",
+    "Whole-turn PHP timing includes the same probe and retained input snapshot in both runs; PostgreSQL CPU is separate.",
+    "No undersea-city fire path in the mature fixture; T02 is covered by the focused combined tests.",
+    "Full random-call trace and repeated whole-turn replay of one code version were not performed.",
+    "Source dependencies/PHP8.5.8/PG18.4 are matched; configured production PHP8.5.12 was not measured."
+  ],
+  "measurement_delta": {
+    "total_wall_ms": 117.439,
+    "total_queries": 0,
+    "total_cpu_ms": 128.861
+  }
+}

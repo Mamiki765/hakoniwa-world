@@ -1,0 +1,65 @@
+{
+  "combined_tree": "99585a57f9d48007a5581ddf6ae1b42554841c9e",
+  "test_bodies_executed": false,
+  "frontend_changed": false,
+  "individual_pr_ci": "separate from this synthetic combined-tree check; no new CI run or manual retry",
+  "checks": {
+    "pint_changed_php": {
+      "status": "passed",
+      "files": 15,
+      "log": "pint-changed.log",
+      "exit_code": 0
+    },
+    "shard_assignment_16": {
+      "status": "passed",
+      "discovered_files": 161,
+      "duplicate": 0,
+      "missing": 0,
+      "unexpected": 0,
+      "log": "shard-assignment-16.log",
+      "exit_code": 0
+    },
+    "identifier_equivalence_16": {
+      "status": "passed",
+      "serial": 1337,
+      "assigned": 1337,
+      "union": 1337,
+      "duplicate": 0,
+      "missing": 0,
+      "unexpected": 0,
+      "method": "existing script invokes PHPUnit --list-tests only",
+      "log": "identifier-equivalence-16.log",
+      "exit_code": 0
+    },
+    "composer_analyse": {
+      "status": "passed",
+      "method": "exact composer analyse with project phpstan.neon level6 and canonical schema preparation",
+      "target_app_php_files": 526,
+      "log": "composer-analyse.log",
+      "exit_code": 0
+    },
+    "source_tree_matches_combined_tree": {
+      "status": "passed",
+      "exit_code": 0,
+      "log": "source-tree-diff.txt"
+    },
+    "runtime_source_hashes": {
+      "status": "passed",
+      "matched": 537,
+      "mismatches": 0,
+      "log": "runtime-source-manifest.json"
+    },
+    "git_diff_check": {
+      "status": "passed",
+      "exit_code": 0
+    }
+  },
+  "limitations": [
+    "PHP8.5.8 instead of configured PHP8.5.12",
+    "No PHPUnit full test execution",
+    "No frontend test repetition",
+    "No production/OCI/credentials/CI/commit/push actions"
+  ],
+  "new_measurements_or_phpunit_full_runs": 0,
+  "blockers": []
+}

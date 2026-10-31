@@ -26,9 +26,13 @@
 
 [固定headの独立レビュー記録](implementation-reviews.md)では、各確認範囲で追加P0/P1/P2なし。
 
-各変更は基準mainから独立している。[6 patchの順次適用確認](implementation-evidence/integration-patch-check.json)は、使い捨てのdetached worktreeで成功した（merge/commit/pushなし）。結合runtime試験は行っていない。既存 #340 → #342 → #343 のTurn書込/マス取得/領地感化スタックは今回再実装しない。#345 stage共通化、#347覚醒projection、#350取得helperも既存提案として区別する。海底消防は既存 #344 と同じファイルを使うが変更箇所が異なることを固定patchで確認する。未mergeの組合せ全体が本番で検証済みという意味ではない。
+各変更は基準mainから独立している。[6 patchの順次適用確認](implementation-evidence/integration-patch-check.json)は、使い捨てのdetached worktreeで成功した（merge/commit/pushなし）。その後の[限定した結合runtime検証](integration-2026-10-31.md)では、Turn・横断実行・worker scopeを確認した。全suite/本番の実行保証ではない。既存 #340 → #342 → #343 のTurn書込/マス取得/領地感化スタックは今回再実装しない。#345 stage共通化、#347覚醒projection、#350取得helperも既存提案として区別する。海底消防は既存 #344 と同じファイルを使うが変更箇所が異なることを固定patchで確認する。未mergeの組合せ全体が本番で検証済みという意味ではない。
 
 推奨する確認順はコマンド応答 → 秘書item定義 → 地底catalog → bulk割当 → 海底消防 → Boost管理。独立性があるので必要なものから選べる。原本レポートの旧順位や「未採用」は固定時点の記録で、本PR表が今回の進捗を上書きする。
+
+## 追加の結合runtime検証
+
+[結合検証レポート](integration-2026-10-31.md)に、同じfixture/seedの基準・統合比較、84表のTurn状態、コマンド→Turn→実地底戦闘の25表、worker scope、集約チェック、観測できなかった全Turn高速化、JSON member順差と残る限界を追記した。実装6headは不変。
 
 ## 効果の読み方と試験環境
 

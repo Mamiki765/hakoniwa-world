@@ -42,6 +42,6 @@ Reviewed commit: `60d65c66f5ee0b6798bc68351201aa233b04a3f8`。
 
 ## 共通の限界
 
-最終headのQuality CIは総合indexのrun linkを正本にする。各reviewer自身は全suiteを再実行していない。本番・高並行負荷・HTTP全体性能・PHP8.5.12と、6変更を結合したruntime試験は未確認。#344とのpatch非重複、6変更の順次patch適用確認はruntimeの意味同値保証ではない。
+最終headのQuality CIは総合indexのrun linkを正本にする。各reviewer自身は全suiteを再実行していない。本番・高並行負荷・HTTP全体性能・PHP8.5.12は未確認。レビュー後の[限定結合runtime検証](integration-2026-10-31.md)は別の証拠として追記した。#344とのpatch非重複、6変更の順次patch適用確認はruntimeの意味同値保証ではない。
 
-English: Independent read-only reviews found no additional P0/P1/P2 issues within the stated fixed-commit scopes. They checked mutation isolation, ordering, invalidation, replay and accounting boundaries. Reviews did not trigger CI, modify code or authorize merging. Production performance and combined-runtime behavior remain unmeasured.
+English: Independent read-only reviews found no additional P0/P1/P2 issues within the stated fixed-commit scopes. They checked mutation isolation, ordering, invalidation, replay and accounting boundaries. Reviews did not trigger CI, modify code or authorize merging. Production performance remains unmeasured; subsequent limited combined-runtime validation is recorded separately.

@@ -1,0 +1,2693 @@
+{
+    "combined_tree": "99585a57f9d48007a5581ddf6ae1b42554841c9e",
+    "php_version": "8.5.8",
+    "inputs_count": 537,
+    "mismatches": [],
+    "files": [
+        {
+            "path": "product\/app\/Application\/AdditionalTurnPlan.php",
+            "sha256": "c2d928887111392abe83002e6a9e1dff49a1a84b2f6472bace019a2c42efccb7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/AdminOperationsService.php",
+            "sha256": "b30051a9cf24ebf680cf386dd060381a3c756d3115f93df55cc503618530b81f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/AnnouncementAdminAuthorizer.php",
+            "sha256": "de22109a7ba6a712d9fcdb2dff21a5130f1e36f6caa55df959a37b589d79fd4a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/AnnouncementBodyRenderer.php",
+            "sha256": "3852e28d84543f927d6939b1ef4741e3d8d1b29dbca5b01a4c6ef455e9b093b3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/AuthIdentityService.php",
+            "sha256": "f4128ea08a3bf9e4e42594ce3f534af7788e2db06838ec96dfb109e60ce8de9a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/AwardTurnFinalizer.php",
+            "sha256": "7a7f458a1d47478c266e1dd0195482e02926a29829bda0e94515bf71d48cdb5e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/BoostReservationRejectedException.php",
+            "sha256": "663055e730ba7240c4b86a55e1665f07cdb91eaead288cef088d1a0b9dcf26dd",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/BoostScheduleService.php",
+            "sha256": "7675a4b6b40be8ab3d3b1c45688c30f1bd590b762c06feb1d3c0ea9090b62067",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/BuriedTreasureRevealResolver.php",
+            "sha256": "75b88ffc1c1bd5ae19f5bb2a6f369b8b3688bbc793a2489cbdbb274edefb5bdb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/BuriedTreasureService.php",
+            "sha256": "0708da082c2756233d0ef68b5bb7a1a1bf4f056c5d360a6d31055d8ca8dadb16",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CapitalPlacementService.php",
+            "sha256": "ff49b7269c3d401eabe17b88cd15afa89a527c1d64253bbab03690f88694a1c2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CentralFacilityDamageService.php",
+            "sha256": "8e0e8b31e5f0009f392ba5760843ad74a636c8cd01e9c095bf99d0bf71deab31",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CentralFacilityLimit.php",
+            "sha256": "7ab6d5577cc577aa65be9809f7d3d712255d97c5ead2b4587e989ee2513cc7f6",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CollectionBackfill.php",
+            "sha256": "254d24911dc6cbbd7574e493dd513267bd14ccadac0361e56f7247f6c3524600",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CollectionRegistrar.php",
+            "sha256": "579aea44f2f4bef71dc5d4dc493de7a52d44883993af6cfd7eb0503e0872e7ba",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CommandQuantitySemantics.php",
+            "sha256": "8f6e1875f5c5408af46247eeaf03583045d9f9bf6fcbe9f7a150ef275cedf11f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CommandQueueCompactor.php",
+            "sha256": "c5bc297e03a86729e5b9cd06bc15dbcc8421654837e3df1669ba8d1f42ea48fb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CommandQueueService.php",
+            "sha256": "0f1d51fd9f88297563fb3a58833cd0db2b9f7656d71a78b6e8573dcb8a703edb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CompensationWarehouseService.php",
+            "sha256": "e8416297b822b5d3b2a9c6564be2ff9a93571c6b1c27f092a431648482901484",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CompleteTurnEngine.php",
+            "sha256": "633ba74cc87bdac44f258cbb0827e3229bbf7a44cbd8c6c52f162c46251d2c5a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CurrentBaselineSeeds.php",
+            "sha256": "f28edbca12e223c42e9effe291cc71c9906aee8ba3a7c8ccbcca7a8ec70d4d60",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CurrentCatalogInstaller.php",
+            "sha256": "8d22d67aba7c32b3f4d339161496633154b2de70e9018330ac67e149cf6e2229",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CurrentDatabaseBaseline.php",
+            "sha256": "edfc3b8cd8a88cd6d536f546bb80a7751e8e62adbbb43f7290f642574b79899a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/CurrentMonsterDefinitionResolver.php",
+            "sha256": "78ac25ae4d63e63e55c8148d43b07070accf91b5b8970d3f7bb3dfb154ab4556",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/DailyLoginRewardService.php",
+            "sha256": "d427eefaeaf42883428c73a978feb3e78c82ab602a3307a912e8296dd4898a32",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/DailyQuestService.php",
+            "sha256": "17a89c318a4dc909560a8ca52152ef5b0ed164da92f48bfe0e846fb3230767df",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/DisasterMutableCellIndex.php",
+            "sha256": "4e8a705e6b3160f2edd66cb427d7d8133ff9de884467446536a1bf1035b522c6",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/DisasterTurnService.php",
+            "sha256": "4b8500c186614143bec9c49936067ac97409da72684a5cbe21d38655ac6fe72c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/DomesticCommandExecutor.php",
+            "sha256": "15430431c74c1de7c76e5430226ded742c8a24352643c608b50679b9d0f3ab75",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/EcopoService.php",
+            "sha256": "b6ee2818bd3b80b224cfc7644a38eb123ba2c32a9fc61a5778c4f20eca666488",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/ExternalIdentityData.php",
+            "sha256": "50d2e151b78062a74cc98f23b2f46af29d91cefbe47ef54931c255ac096b05c6",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/FacilityScaleDamageService.php",
+            "sha256": "497fa12e3eb4a07e7db130693af8503d393a87b24140e0ecd2cadc34b28dac44",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/FoodOverflowResolver.php",
+            "sha256": "9cbbd288ce1973ec82f8a1594f7515b2b93aaf4314f78b3b0ab8cbee061bcd79",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/InitialIslandGenerator.php",
+            "sha256": "9059e3359f455cd2c9a9e37e31e96c232813b45831f9fd3ee42a0a32889f6b71",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/InitialIslandPlan.php",
+            "sha256": "6e23acad49485bd6c456ecc4510b9622451f2374118ff291605871f67bfd3841",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/InquiryPresenter.php",
+            "sha256": "c715fef96ad700704d6dbd2ca91d2961ee9c468fd3635f96990420d780812bac",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/InquirySubmissionService.php",
+            "sha256": "40b700476cd657acbc40d8f12330867e27958ca6df789a2f18a54c49d3439294",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/KarmaTurnService.php",
+            "sha256": "4845d90722771c13d16cd905303e677755ab337fabc365aa056285ae9d647af0",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/LaunchBaseExperienceService.php",
+            "sha256": "784b014d8a9ec77deaff8d97aa1b6682d1f1fe6f2a824809031f1a7898b9ba23",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/LegacyInspiredInitialIslandGenerator.php",
+            "sha256": "948cba1c4cd7087e89b1dbb413220161489fd291d5d310827c80be00be492249",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/ManualNationDormancyService.php",
+            "sha256": "bfc419c50a86dae2185a5a6444ab4a7408e9025aeddcc7e5b1b68757c492abe4",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/MapChunkService.php",
+            "sha256": "1fb453d54cf37812628ea2554434899e7a3365dc1e6d1fc726438c33095094a7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/MapSpaceCoveragePreflight.php",
+            "sha256": "ce07639c2273b8d88a5adeb8b12c16b76d7db234bb02fc0c4e764bbfd1808084",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/MessageBoardAuditRecorder.php",
+            "sha256": "e01afb04b57d9b6cf8ec362ac46fb1cc544ba095deb791b607e6a9511ae63860",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/MessageBoardService.php",
+            "sha256": "f9b15e0ff7c2eeb73d79bcd8220482f19fe61e52950874c6c34a6c9db076ad9a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/MissileImpactResolver.php",
+            "sha256": "b98967884dea9fa6555ab222beb069ffb84ff847c65686dd963deef4b4910855",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/ModerationRecordService.php",
+            "sha256": "bd368c0a800ece671f1d4a30f3904505e74850adb6cb4ef5c91fd15d6c254035",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/MonsterDamageService.php",
+            "sha256": "a7303639a882ece0d53d276dd315092932642723c499a561e7933f3c0b8fbdbd",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/MonsterKillCycleService.php",
+            "sha256": "c9752ed1980c7741f40fa1540889291e9ce2a1178e88c7641f13f9a09d9c9f10",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/MonsterRemovalService.php",
+            "sha256": "2fd2b1581a346ac3a2bdae65f19f34c7a018830571aa054c8c485b6dd53b546a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/MonsterSpawnService.php",
+            "sha256": "31c5e1b797572b0c9c13d57ab850c93acef887eda66f2c9676cd21e3d4e41559",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/MonsterTurnService.php",
+            "sha256": "3e98e1ad51475f96ebba70c2c5cfbfd2b48889087eb3baedd8792501f923632f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/MonsterWorldSpawnService.php",
+            "sha256": "bb3651f0ce0830320c16490790c8f727a9dc2fe5e8b5290084ff5f631b2cfde2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationAbandonmentOperation.php",
+            "sha256": "0b99ef3339c7c0c8c75a42182d25478add7c160a89501faa338b81ade642e5ba",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationAbandonmentService.php",
+            "sha256": "a93fc49f8b044fb4e25c1970e8536743a480920a42c97a30dab7545ca551a269",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationActivityProjection.php",
+            "sha256": "8d0ca8eb8d36179105caa31db2b79b019135f0087d5e92e3267eba7ffcd12bce",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationBasicStatusProjection.php",
+            "sha256": "3bdb871aca5af2729b3efebae24273de1343c2c85cc2959068d7680cd417e22a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationCommandTargetService.php",
+            "sha256": "1bf1d22b1c7396e79ebf719b405659a27c3382c74806b1d6d9dfa236aa72c3be",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationCreationService.php",
+            "sha256": "940582019757cdfa3952e326ff0bf0e5ae712dbd8261b04736d63ff324caffac",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationIdleCounterFinalizer.php",
+            "sha256": "3292e157244ed41011af4fc098ad7cbc2221fa63349f5baef2b9634d70a599b1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationLifecycleService.php",
+            "sha256": "6f86c038cc5962a21fa67cd32a371d4a67329936432c459b6b10cbb21e523e8f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationProfileService.php",
+            "sha256": "1a39c0abb8941058789249ff35c7221b8370045f6ffcdccdb1c03c60d25183ac",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationQueuedMeaningfulActivityQuery.php",
+            "sha256": "7ca6a9bfbc78e80adc282361b1c5bd27e48b02030e1d60b802bd4dbb7a541b71",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationRecoveryExitService.php",
+            "sha256": "b51769c0f13aa79f8d074d506151a1e6f2145e6a99d9429227b14554ddf80e66",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationRefugeeReceptionService.php",
+            "sha256": "07224192988b734d28f89af7d4038fb852ab8adb7ef0a045805be153d7754efa",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationResourceForecastProjection.php",
+            "sha256": "a8d16d8f5e95498e9e9a780bc1a7e9ab1eb2e1051ecb518c66ebf4a612e3b886",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NationResourceService.php",
+            "sha256": "6149d614dc4aa89857e353e0c8dc45b00600969991d6a4869dd01998e8fea49f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NextProductionTurnRunGuard.php",
+            "sha256": "f9818a21bfe54c53496719fb12f311cc5fcf2fbf393c69d86a6c260c81658be8",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/NpcShipSpawnService.php",
+            "sha256": "e3909930265ea2ab0a2cda974baeb5d4381759db15275e20a0be57360ef53544",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/OceanWorldGenerator.php",
+            "sha256": "977b0a16d718e9b913b84eab36de1aebaac1669bc80f48953120c022629b7e23",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/OilDiscoveryExperienceBackfill.php",
+            "sha256": "351d4efe2f12ed24a30a73566239887b0b14fa7d02dc0bc81787066ac573f82e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/ParadoxBalanceService.php",
+            "sha256": "a142e241713eba31f05eb5065c18ca97dbac21fd7e4e5fd24dfafa60661ce6d7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/PlayerIslandEventService.php",
+            "sha256": "88f136d1a100d2bbba15e7a1377f887af4a4a3cb0df4b41f31be48ffb5c21400",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/PowerEconomyTurnService.php",
+            "sha256": "23cbbfdd9c6f30b9b4c5ef95ae97c9accaa3771fbd280c19decad7228cc74a8d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/PublicMonsterKillProjection.php",
+            "sha256": "6b7b1a57b5214afa5dbdb35a8f09e97c632c65826099f3a142c7585f24546d15",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/PublicRankingAchievementProjection.php",
+            "sha256": "39305d0ce8ca2da091fa3d1f361de428d3bae9da9dfa3878e608f565c2e592a7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/PublicWorldService.php",
+            "sha256": "87acf460fa9f0facde25cba2587914d985f2c062973d03a129ea78f2bed6ee4f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/QueuedCommandDefinitionResolver.php",
+            "sha256": "8b0c1098196fbce67ddb44f3f4e56fb0330810853b09a92216f8a742c07dd386",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/RoutineAuditCompactor.php",
+            "sha256": "58bddf31dbd1bd27eb9c9bcd0f960ed51268ebe83f5fe49f10cf5b73f05834fb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/RulesetPublisher.php",
+            "sha256": "f603bb438fcfb5922089d05bc66975dffed8f13534a7c05cac5b03a4f5bbe81e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SalePolicyService.php",
+            "sha256": "009ef432b51c5407b3b4427a49cf8bc9f01e0641ce8890d0d9926b20e4d6a59d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SeaAreaWeatherService.php",
+            "sha256": "0f248e924258d014352d9c16a7b733779b2e9f6bb3fa951e9e8028609feff945",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryBowAttackService.php",
+            "sha256": "061f5d1f06b8128ccc1908b10b0334dd1767f130759e9c24b37a4793b5664993",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryCollectionService.php",
+            "sha256": "434b8843c746ac964928f4afb44c8c4f7451bf1c7808d4315dd6df76d158f111",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryDemographicExperienceService.php",
+            "sha256": "8b363379a3dc2ea84c50eef6f7be69c50b00789638db35b101c66231ecff9e4e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryDisasterCharmService.php",
+            "sha256": "960042ca5bb90f5d6b9baef32bebcffe7b7a03b0413800dc629e5fc062de57f5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryEquipmentService.php",
+            "sha256": "ee2138db2903c0db56520cc38fc823ce80a7ac4a14466787e39a3a0af6c6d418",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryExperienceAwardService.php",
+            "sha256": "b28987cb4787058edf6f36c5800fdc59f521850b80295ed3dd6f1383bacc755f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryImageRetentionService.php",
+            "sha256": "cdfa12d3f33738edf0a87e41c29c82541aa6632c4241b108f1e8280e9b2197a1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryItemEffectContextResolver.php",
+            "sha256": "da2a103641db3368e9d4f03144f098a33dfc17409c0010a87521b5baa2ababe0",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryItemEffectProjection.php",
+            "sha256": "6bb617d47998ad4270340950fecc9418563c69620aa2e2f9e7521cab4d520af9",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryItemGrantService.php",
+            "sha256": "18bcddd7351390feff192171f01b85ac9fd08dabbca1c9aa4a99cc47173eafad",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryItemPresenter.php",
+            "sha256": "61291b969027a2023cb8cb1c0d567c4e08b5f881db94706f84a135396eb4cc2a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryItemSaleService.php",
+            "sha256": "43114310e883f02ebd94d32b1828142c0009f7ceec0c140d6c7a96ee5e54f9a9",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryLendingService.php",
+            "sha256": "bfccc5d42ccd12bb2b35a7fc7ae0a7acfc10ddaf3135da1af1ca2996991bd414",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryMonsterDropService.php",
+            "sha256": "e88041047b912a4c02605403bea2987fb1af857d224b5d89dc4a34720543014c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryNamingService.php",
+            "sha256": "08eda76a08996d9f3a0fe1be6fbe27c958489d5b0987e7bb6408f5696bdd2eae",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryNavyEvasionService.php",
+            "sha256": "2a51ca0c4e7a093296dc3811b280767e541c81c1ae5418e2d12b9cc6dd6564d1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryPresenter.php",
+            "sha256": "f7f7ece039b17d7c1583ef1adbc569e3586401efb212b8d32159720a0c4c6f1c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryProfilePresenter.php",
+            "sha256": "159f5334e71ffae462e72725b118c4e4e67587687f572fb35c23048cbc82d73c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryProfileService.php",
+            "sha256": "e6797a3249446ab7a43534286123b49ec1704a0c31e435769ad6ea62112542b1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryService.php",
+            "sha256": "cfcc016c9ef212fe9f9b60707e93faa1131145d030b94ecd5135af1f3e2e6cf2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretarySynthesisService.php",
+            "sha256": "167767fd85f4a4a1d5584832076428d299ce306d1cdb9d2a53151485a91436fb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryTicketGachaService.php",
+            "sha256": "41c0ac6d1d0f9fecd245537f5b550e894ff6bf07eb36b90710b7d93b42d361eb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryTurnService.php",
+            "sha256": "7b841fb968ac46eaf5535ebbcdb2a0ba199493c9792b56b031855eec7d9c2afa",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryUndergroundStatusPresenter.php",
+            "sha256": "e313db96a2212415a3a738632bfe2b4abe9bf7cb928e5f6c188bc4392026b3c6",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SecretaryWarehouseService.php",
+            "sha256": "4350da9385d79be3bf8d5af3c6801686b1546c6636b93d18dcb2b88b92b770b9",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SurfaceShipBuildService.php",
+            "sha256": "8774173e19a708c470b09250a1b36054904d3b0dbd918caa270904aaa3aa5de1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SurfaceShipCombatService.php",
+            "sha256": "a68a1de5c5af0b26eb6705a75067bd48ec7ea85dd0e9e74a7c691a60be22b8ef",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SurfaceShipCourseService.php",
+            "sha256": "cf8d52b5a0e43369d3186856975ddf88f2013f8fbcbbfefb73e06568c1bd7a81",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SurfaceShipForcedDisplacementService.php",
+            "sha256": "7e306fc7ddb7e8cccf149306412cd862cc4453f1732ac09aed4539dc12b8bf59",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SurfaceShipNameService.php",
+            "sha256": "cc410fca1fa598a63ebafcc6336d6e866a343914bcb70800514ae695c55c4be4",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SurfaceShipRemovalService.php",
+            "sha256": "acf12ba325a4121fab62b2822b09d337688942987acdcf5d5542e866dd9c5f04",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SurfaceShipTurnService.php",
+            "sha256": "bea090d788388d6b8e4550e2f61491e37e8df39645bbf7d47041ba05389e8b5d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/SurfaceVisibilityService.php",
+            "sha256": "c11c2faac518f91872deb016b513471ff1d78c25d9887fbb8a067c094cfe2f50",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/TerritoryInfluenceService.php",
+            "sha256": "885c8b1ccbe02b2856fa689a39bee6912858156480ae8530f991daa011ab079f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/TradingPostService.php",
+            "sha256": "79da84c01de7f22057b9273f8417ce5393e5bc0dce613c872af279c7ee0ad060",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/TradingPostTurnService.php",
+            "sha256": "e502f76d56eb3c48ecdb18071030281694d71691cf9bdf8ed962ce1c8649c127",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/TurnEventRecorder.php",
+            "sha256": "418e7ea56693445af2a122aae61f722b338c7d36a0c0ccecee451ee0ca2e85f5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/TurnExecutionSchedule.php",
+            "sha256": "58157324bce5e4bd2fd722d3ce112e5c3c75a5f8a2803e81647c512624461417",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/TurnRunner.php",
+            "sha256": "8583e714aad60dd5ed6269f29e66365b3696341226450851d029b2a4b0392893",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/TurnScheduleStatus.php",
+            "sha256": "4396afffedefd9d43caee42bf2a765912b09dd1861ba327288479598611d6b56",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/AtomicUndergroundCombat.php",
+            "sha256": "89aa1bca611b35ed556b968354642fd5a93f651f0d7663d88efc002212541dd4",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/AtomicUndergroundExplorationCombat.php",
+            "sha256": "210cbd561f9621e7e209745ed7d4574cc9ee95a2d62d073a3eaadd73b9bf7a24",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/AtomicUndergroundPartyCombat.php",
+            "sha256": "87321d704c2794830143125d6b1000ba25c6010ec287ae82926a7801f20e9e4e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/BorrowedSecretarySnapshotFactory.php",
+            "sha256": "7200b384e311cf9b9b3af1a5ca9d6dc3290ac809977b0acde40d8fd06aabccdb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/CanonicalUndergroundCombat.php",
+            "sha256": "f6dead914663cb05761fe1cec1b395043c5340f3d2e40bcdcfbb4ee96e3e5164",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/CanonicalUndergroundExplorationCombat.php",
+            "sha256": "17587d5cc71abcafe3d2d55df46bc88648cd897f7ad41db113f85b8a3bbbe035",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/CanonicalUndergroundPartyCombat.php",
+            "sha256": "c5634a3ee7a252954abc9c7270a8f7051cb3a438d985bc4e3d033dfbb683ec33",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/GuideConversationService.php",
+            "sha256": "b049220cdfe22cd7b74339e7d5402237e65c6756a2906fbcea368fde5768388f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/GuideConversationUnlockCatalog.php",
+            "sha256": "d00938fe7389687ad446361bf1f43ad160c26158417181cb1c44b1b28991aa63",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/HuntingGroundBoost.php",
+            "sha256": "3a155c18f5e4407cdd43c1d0fa690a5e49e2c8fdf96df1b84d98c7c61cc09aad",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundAlphaV1BattleProjector.php",
+            "sha256": "430082f68c8e7509b1c23723da35a843938ae34f0f74b7c206fb8f87e70c621b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundAlphaV1PlayerCatalog.php",
+            "sha256": "c1bfd2652f91473f995a2a1f81a3e5bed065ce6e50b86fe901af5bb412e0f5ac",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundBalanceSimulator.php",
+            "sha256": "b1bf3894c6d9df3a1ff43d7778319647b4378fa8e508aee164d17fc3d1b5d0a3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundBattleHistoryCompactor.php",
+            "sha256": "96db43dcc980b6bad0d82a9426100940490902c51005cbb8e421b95074688394",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundBattleLogProjector.php",
+            "sha256": "c766d567102f37e89fa1548d90ad67f368c7840158ad4d09d5182d347d96c779",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundBattleSeed.php",
+            "sha256": "3d6c3a52a4041156e7bf8b24ddb5bda302e8bef5ed38ce295bec45a5abd5ebff",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundBattleStatisticsProjector.php",
+            "sha256": "8dca02f6e48887682ad8e4d2ec698b6cd1911fb50b61c5fb09241de75c3f7cea",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundBattleStorage.php",
+            "sha256": "d3ad0730a8c9014ceb28d56daf8ab7ee5ca8b1371c8916ebda530a9ea439d278",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundBuildBalanceSimulator.php",
+            "sha256": "11644cf766f9c853dda84fb7f167bc15fe1fec9f3f63482d535a153c391e0431",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundEquipmentCatalog.php",
+            "sha256": "a21fb0ec81ce85a8cb4973a609183d7bf9128dc2f6d796f7602cdde34867d1f2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundEquipmentDropService.php",
+            "sha256": "67d42cad5b3acb9667110002a81e411d925ba30e84197946f8e5387513018cdf",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundEquipmentLoadoutResolver.php",
+            "sha256": "54764d2bd3887317b43eb1afffe06dfe5dfb3af021fdb79e5e84f7992c674b9c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundEquipmentPolishing.php",
+            "sha256": "64653eb9a70bfcfbc999b12aff3c46885c33e5e46713bbe12d490c88066b6348",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundEquipmentService.php",
+            "sha256": "611c66d0c9b10e2dcc20aa9945ede39c5b35d4c1a7f403b26a6bfe912dcfc1de",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundFacilityBenefits.php",
+            "sha256": "38141f59053a9a589516d831b3973c3ca2d9beeaab26f13769651b33215101d8",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundFacilityService.php",
+            "sha256": "6d8f2bf79230353623b4630bd72c8fc5bb551ee94cd890234b70a4ae2921f70e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundIntroCatalog.php",
+            "sha256": "e86af140542e374995ccf231cc8ac0c311ad1683a40f3cfbef040a3d8125564f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundIntroService.php",
+            "sha256": "f2a7d5bf3feb5d305e42b16e038499a909e60205707b1c5ecf13c84d153b2320",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundJournalService.php",
+            "sha256": "e174675d3ad079dc371363c21d97ab6f29c8f20b6462cc665322c5028ea33740",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundLendingRewardService.php",
+            "sha256": "cf57517c5ba7c156a37dbafeb0ebcdec1ff48ea1e3ce64877b34fa1a8f9a5d4d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundLifetimeStatistics.php",
+            "sha256": "9959f82407a013e048d575a7f3a31a89b7edf5f9d15efea8fc3bbf2acdac436c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundMarketService.php",
+            "sha256": "1001e4bba9e108eb04b9c7da4e7f41d3eccb21e5bd0b461a9dc75720b1be053e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundPartyBattleProjector.php",
+            "sha256": "62d2cb9930b2f3b75996b85c013c8322a5d69c6f498f6b5e3474b6fe510b159e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundPlaytestService.php",
+            "sha256": "d41132580063ed53e62c0a70d09ab49aac6e61fcf5154c5c5e93d5c61a1b1078",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundProfileService.php",
+            "sha256": "a42495aa31cb330730f18e8c969e50a2f90b934be44278fd771a6ecbd2b0d988",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundReceiptPurgeService.php",
+            "sha256": "61ea5a59ff1b0f454220159bc7aa29f26f0f75e61d8844ee7abbc591b788a8ce",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundReceiptRollupService.php",
+            "sha256": "2f708d5f89a737b55a56ca52da9658ccf3803ff49ab89abf5aa84e26cc59544a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundReportSourceIdentity.php",
+            "sha256": "b99134d3c59cfa299854a42a9ba4e2b9beee5e432ebd0686cde1dbc4caf55a1f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundRequestAdmission.php",
+            "sha256": "ea69d6d29c632245d043be92f99b5d6e66efe24f4aff83847c811ac179143c44",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundRuntimeCatalog.php",
+            "sha256": "1826675b682fb141e95d3456c495c304930ec85a457bf6d26b0cde8428e28eb7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundRuntimeEquipmentGenerator.php",
+            "sha256": "1713963444366c0752c2b190e28158d02561c44c9b7f7422129de196fc8fb9f3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundRuntimeException.php",
+            "sha256": "669406c4c7551d37082492eb34bc540395bda9dc96b7770d24ea8a71325de3a3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundRuntimeService.php",
+            "sha256": "f1478f8c0342aaa913135a334de1c05e4c28986ec59ab816c367909db87d18f1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundScenePresenter.php",
+            "sha256": "50bd7f53cff52eb4e779e5f5e5fe3f083b9662d90f9aef1e19a0052299cebc6d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundStarterEquipmentService.php",
+            "sha256": "34c48188bf5b6db6c62aba8deb1f5819c0b46312c4c647b7138eeb11f058436f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundSurfaceMapProjection.php",
+            "sha256": "34d07aff49e973943868bb287a79ca58196a067037917cd5c5b66cc56733dd41",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundTrialBalanceSimulator.php",
+            "sha256": "0b360a82aea57a1a4c96cadf01eed1fcf891c388d9764a7aa54d2bf93317650c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/Underground\/UndergroundTrialThreeStory.php",
+            "sha256": "dcbf7eb969810b3267857e7dda54415c232b530349bbed25c7245d863113fe54",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/UserAchievementService.php",
+            "sha256": "f9edd403ddf573c40067e94d47f7de238e41c0a69c656f0e46747e67e94ad3a2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/UserMonumentDesignService.php",
+            "sha256": "c8dd6c2f181daf136430984eff4a0c9548434db0cc103378c00bdf064299fd21",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/VisitorCodeAllocator.php",
+            "sha256": "8fb283796a1c7d83413661530b77ecd9aba2033b61a462a4cbe5df44f3067cfa",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/VisitorCodeGenerator.php",
+            "sha256": "395e003c4eff7dba926de120924f172f8344fa32531af6f50b78caef5f59a983",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/WebImageUploadService.php",
+            "sha256": "b3c298948d8dcf0ae2925cc710f72082065dcf444e3b60c1ced38a3d94fdf0ee",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/WorldDisasterOpportunityService.php",
+            "sha256": "1f7378a5b82a1494aba290525c9d4fd9f0780814a3c0a1070ec56dd277896fa1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/WorldExpansionService.php",
+            "sha256": "ddbd9389aca9eb33e063f60eb5ecea6e287df6cf556705c05e10425c327f9e30",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Application\/WorldMonsterCountSnapshot.php",
+            "sha256": "3fe31e2beca88973b14149767eb5150efbc47355d1ec181152d9f9d1c533e7d5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/AggregateUndergroundReceipts.php",
+            "sha256": "93ccdd064ca81d09236677b60836da78f3c80dfc334b76701f4185f14f54de9b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/BackfillCollections.php",
+            "sha256": "40fd50da5bcaba1a08f85ede524dfe2cc62fba5b961b4a4c6dae73af0891fdbb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/BackfillOilDiscoveryExperience.php",
+            "sha256": "aa631ca4fab0209b9b63c3f700e69532a0873989264b32ce75f308f7eea2ed8d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/CheckDatabaseBaseline.php",
+            "sha256": "90a93e788e7fab29dd741391f68e80f9b30e8a20187193db4ced93f042784ece",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/CompactRoutineAuditEvents.php",
+            "sha256": "8f3cd8d5ba380ca4b105ef701310d83cbc47c8cbaee1a71da3946c36ed61135c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/CompactUndergroundBattleHistory.php",
+            "sha256": "cfac7e8c5afb20d9924c5eaf59743c7e3fbc2c7821ecd0612f22b18b348a1f05",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/CompensateTurn.php",
+            "sha256": "126ef27bedc37019f55a22246848bdaae806cbda082540b05fc6e2fe2e902fe8",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/CreateCompensationGrant.php",
+            "sha256": "6d390b86ee83aaaf96baeea2e04e2d6494233a73afd2fc653d1086464ed6f318",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/ExpandWorld.php",
+            "sha256": "d593836b24b83b124e03472225dd9c09f470e7cf7f4bc7ed64d8d23d049a48b0",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/InitializeTurnSchedule.php",
+            "sha256": "64f1b744eea4ef46bf16fbefbdf9cc73d063c8067dfd9cd27e8c165505693581",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/InitializeWorld.php",
+            "sha256": "87dc241a739bc88e0970434ba23e37c2dfd19cecb55c318d6e3b7f176380293a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/PruneUndergroundBattleLogs.php",
+            "sha256": "7db50aac047d213b003d5e8de47b78979615d7b6be648706ce95916425d6df29",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/PurgeUndergroundReceipts.php",
+            "sha256": "c8684814b097384965cdf92f5dc6a4b18c46e28457ee6dc5ccb5753962bff19b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/RecordModeration.php",
+            "sha256": "61dbbab3fff09c0c8e7c3b2a308ff328ac4db15a8ae78b5a7c021010f0f2a9f0",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/ReleasePreflight.php",
+            "sha256": "2499e5b55766ea887b4a8d7e24136ea50f83481226f2afa84337e9707c394de5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/ReportUndergroundStatistics.php",
+            "sha256": "450f9ac9b7bb3c3b7b743a3b494a2cb7758286a76b84e60d727196b865b3fa3f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/ResetWorld.php",
+            "sha256": "e25ae4970f8941e48746d3fa6d2367404f5dc3536b768bed2b88f878ac3a7ce8",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/RunTurn.php",
+            "sha256": "b8125d77ade09597a43a76b5141f46ab51794fda92298801b1a4378c27ceb921",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/SeedMonsterAwardCycle.php",
+            "sha256": "977fe3b0b16fe7e78502f61a9d6927aced64fe7e4fccec9f8fe9a68811c6f1c5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/SyncMariaAchievements.php",
+            "sha256": "e240967967d23a43037f18dd12c4659e63a58d34f0ce3a30e15176b4f62f3b69",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/TurnStatus.php",
+            "sha256": "a4bc2b8b2a638483554def861d634eaeba9c3e6c518a797d8ab0ca9a8e04fec5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/UndergroundBalance.php",
+            "sha256": "f2ff896083964a780cda60b5bf2df86402d1d01396b49c9b92b47385d084ce99",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/Commands\/ValidateRuleset.php",
+            "sha256": "e941d78ee667ba20d545f7e15f43d9e00324280403e880572356323b9c3bf273",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Console\/ProductionDestructiveDatabaseCommandGuard.php",
+            "sha256": "95bfea42f0b962fbd0ad2d30375f7086a9b97112363dde1189ecaea71a91942b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Award\/NationAwardCatalog.php",
+            "sha256": "7953677ca5264bf8484143a60d8bbb6e18e129bf2a735ac32d3d30b723d3ec54",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/BulkPlanPreviewChangedException.php",
+            "sha256": "91b9a38831e5642c84559dd5ea5952bec76537fb3f552b5b84380f8ecd2076d9",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/CapitalCorePolicy.php",
+            "sha256": "65a947580ce011ec46557e3e2e28fd752399e0367157da5b85815e429fe56bcb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/CapitalDestructionPolicy.php",
+            "sha256": "e20075de1bec442789a8655063c0945673e3a44ea9d138e05af1c19ca13ba7ca",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/CapitalRelocationCooldown.php",
+            "sha256": "75bcf276614e2c1ea990755fd4abd7adef518845fe008f1f108d353552819302",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/CommandFailureReason.php",
+            "sha256": "316d7fe2f71e48648bab339d107c3ba0e496d1572cc863550769e2d6f17f1f2e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/CommandParametersValidator.php",
+            "sha256": "3d53ab8cdb7ff285612d552c76ca1ad8bf948373b7c60db5b7e9d7c3030f131b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/CommandQueueLimit.php",
+            "sha256": "7dc7ed3eab75d1d38d53bb5c05a2a56dcd37e9860a78a886ae8096fb2f50e9ad",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/CommandRequestConflictException.php",
+            "sha256": "9c2fb93cc96d4bde9546b14ff1d0f524e0a75bea1348b9bd5a86b11111b8ce30",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/DevelopmentPlanQuantity.php",
+            "sha256": "ae20399d104b8026c4a32f88352649ab48f0e72fc56dcee30be666461805b58a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/LandDevelopmentDistancePolicy.php",
+            "sha256": "fc52118d48ee51c0ac41bb9364e03523be9e1938449eec4198d8ce41a97d9a86",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/MissileTargetPolicy.php",
+            "sha256": "9f0e9f327ecab5fd6ae624a2a6cc0a8652e280fd1ce97414b87c0a5f9381ef04",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/OwnerFacilityOverbuildPolicy.php",
+            "sha256": "89321d1c5ec10081e0953c0dc22711f0100deee63682a51acfd532ce13720651",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/PlayerFacingCommandException.php",
+            "sha256": "a1e278bc82753513e00f06b059fa4f1b01b4c508cd2762948a42b43d2772da2e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/PortAdjacencyResolver.php",
+            "sha256": "f206e83300240a4c7d250d22c7d659a741bb4e9518451ba16450dd6f3dbfb66d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/SettlementOverbuildPolicy.php",
+            "sha256": "f509c435a5fa8184c1cf8b07ab2eb6c0d776551f79dd185ae0d811416fcbb560",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/SurfaceCommandProjectionMemo.php",
+            "sha256": "ed7573ba26b3699386772a13c82580db55f7a0cc24ad644c5dc793ee5c8aefc8",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/SurfaceLandProjection.php",
+            "sha256": "5c69f194309f53c7ff0c068848fe05715e83cf875faa27ba3257c0fcf788f4a9",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/TerritoryExpansionFacts.php",
+            "sha256": "3e55c1872018266c2376df7a2b95b70df662962ff4771d9d1cb9e3c539b73407",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/TerritoryExpansionPolicy.php",
+            "sha256": "7bb36aec3cb3ba6b0b6a3bc3be68e233e580d8f58f32f9bcaf429b61c13a62fb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/TerritoryInfluencePolicy.php",
+            "sha256": "6f4e3882ce7f8f12d3ed1b2f6718b78f83a554bd282994ff9d2253f1935825ec",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/UnderseaConstructionPolicy.php",
+            "sha256": "d2e2bda13a033a7b8500a3e5251d38baf39ab6a0c57e5b7235e98393dc64e2e4",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Command\/WindPowerRepairPolicy.php",
+            "sha256": "6877510533b4d09059f458650dd21ec4cc4c6852cf6e9ba87568bc1271d787fb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Concurrency\/OptimisticLockException.php",
+            "sha256": "f7f7496f9b3f04edd27768fa8a5558301fb9a154dbd2474f73eda1be6d79ebb3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Disaster\/HugeMeteorWeatherDistribution.php",
+            "sha256": "ed740e14c5e4fe6f85fe081b437f3a219a03d8ebbd3c1696cfb392f93ada656e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Disaster\/LandSubsidenceThresholdResolver.php",
+            "sha256": "76f8d57a6fd1c2bd059366502759dde8e463146ff5728689e811c4f6682f07ef",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Disaster\/SeaAreaWeatherLottery.php",
+            "sha256": "aed9377cabfdf73beb7a3dea9f3d8b9f12fdf6c4d4286a24ac227d036198e981",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/CapacityAdditionResult.php",
+            "sha256": "60bc0c3d51913b642b06ca051115a268f6c87bef22846e0412db81a363d06768",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/CapacityBoundedAssetService.php",
+            "sha256": "7b72a7d033a2c70ca171f6cea8b83fdfcac4d8a0f4714696bc1e0773f82c5067",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/CapacityModifier.php",
+            "sha256": "481ec0ccbfa989716aa6004146aa59f22c0fa9caf38579f5c4d7ed9656f921ca",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/CappedAddition.php",
+            "sha256": "b35c08bb47573fede32d87ea4af45ab7117766b4bb69231b05b47f58d255cf9e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/EcopoRules.php",
+            "sha256": "b8fca88e298311dd670f571baf081ab7d992d248329ffe91348d815ff9851177",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/FoodConsumptionPlanner.php",
+            "sha256": "e9095bbff35df24f098a2fc6032aac890d1c48967db3360b757b9b6c17f62158",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/InventorySalePlanner.php",
+            "sha256": "80ce4bcb1891f4b4019f30027f5cf4d99502fd84eaf5d3b6b6cd62c4f7f9a993",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/InventorySaleQuote.php",
+            "sha256": "f1e52bdbe2eda36c12723b07913ab7ac9d013ac84bfca519c24f082c026cf282",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/NationCapacities.php",
+            "sha256": "e2723c6f4108f3ccbb58d6ab5273951c83db68dcbbfbde60220307e604f6adab",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/NationCapacityResolver.php",
+            "sha256": "e1a9cf66d50c946b5d202f30d4190c0b9d8fbda2cb8e862f0bc1d6bb56087ef0",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/NationEconomyCalculator.php",
+            "sha256": "2f2ed15a4198aa3b49eee127a866b65dc2d185625268c0157e57b73b1c2411c9",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/PowerEconomyCalculator.php",
+            "sha256": "90e81c71ecfdb3c1631b30e25ce2ff4ba1e4a641fccc35722156c3cda0184c20",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/SalePolicy.php",
+            "sha256": "c46493485f7c01bd589e08224a7ff93da0d2b89377814ef8bea40bd4b99e1b3f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/SalePolicyRules.php",
+            "sha256": "278d4df0272468eeaa247175d5b6a4d875b0ceb84687663f8eca5beacd1c8ed1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/SellerProceedsCalculator.php",
+            "sha256": "262336a6e5d4bee758844c8fb581072f74b6d687bb2b8e012ae97c46375e0b87",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Economy\/UnderseaCityMaintenancePlanner.php",
+            "sha256": "f81269fb7055e1326d021d581cf1e8d2b223f897b4157ee07875da62825330e6",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Facility\/FacilityCapacityService.php",
+            "sha256": "3567388add7f8375e25eeb00b547604a1f501edd7ca947d9691bd61803a005b6",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Facility\/FacilityRankPolicy.php",
+            "sha256": "f46c0d804c57bbd696c008ac64003e8cfec8584dd9ee17ed82ee3f2dc5d1ccbd",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Facility\/FacilityVisibilityPolicy.php",
+            "sha256": "ed41d18c724b71a4a7c576676fc36fd755ce396926efb0e36cacc4bc6d46a274",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Facility\/MissileBaseRules.php",
+            "sha256": "0d8b329b2a9830f5bcb3df8410730d5349a491e243e7de1215bd86151302f52d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Inquiry\/InquiryCategoryCatalog.php",
+            "sha256": "82ce40bdb9a09eaa87090c90415e0084f16b2cbc973e19223be1bcd410982665",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Map\/ChunkCoordinateService.php",
+            "sha256": "70bad0aece5ffcf297c2a0172a82aec9039025a881162934963ebbc21adda1f7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Map\/GridCoordinate.php",
+            "sha256": "b53a7ef6090210088ae5ab872b612a72aff78aa0ccce64821958ad6f3b96f3fc",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Map\/MapCellStateService.php",
+            "sha256": "80dd6c1804ff776638e09b59ee2135295e2ebb221c0c3d54360d9e07b8990824",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Map\/NationLandAreaCalculator.php",
+            "sha256": "49c2bb045d58cd1ab336cc6186fa607f4e4d9278304fa4a4fc75fc32a7f73eb1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Map\/OwnedLandProximity.php",
+            "sha256": "d043a3d8d54d879f5c3f49fad1fd9e66ba6fc5ec1b27c353a9d6d1888c94a4e3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Map\/SeaAreaNameResolver.php",
+            "sha256": "2176cd4bba0243126339b2709fce1b6dd74f5970551df3a0cf7d69529f1b53ad",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Map\/StaggeredProjection.php",
+            "sha256": "46da0a43b24e2c65fac212698c3e18c040fca8ccbc902df96b75109deeee4762",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/MessageBoard\/MessageBoardContract.php",
+            "sha256": "c5e3cad28f31fdb72692c08cf5f29892b061bc36b71b86010f9fee894821d275",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/MessageBoard\/MessageBoardCooldownException.php",
+            "sha256": "4d2ce0b4bbbe1c02ba60ac6fbb60143d4f428320838789bbfdebe0a0004a62fd",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/MessageBoard\/MessageBoardValidationException.php",
+            "sha256": "c5520c0d667ae95f5a2e93f123ceb09e216191fe578c1cc30a6b426151f2d780",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Monster\/MonsterBehavior.php",
+            "sha256": "34ebfe39de9cf15ebfeea4260f6fd031139ad40f53c0f6f6a13fbfb97040a88e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Monster\/MonsterBehaviorResolver.php",
+            "sha256": "8752b3f92c41c8b78509407538455f86200f7e27d0d9d671a1f4866109be57ae",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Monster\/MonsterDamageResult.php",
+            "sha256": "111b39033c01aeb8d478807aa206b820c2ed4347e5bef64c487786a80860558d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Monster\/MonsterDispatchOption.php",
+            "sha256": "fa0c8cdbd5fd92a263fea642d3ba37f85866755267c7271873a11188304288a3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Monster\/MonsterDispatchOptionResolver.php",
+            "sha256": "0132720eac57f85d9c6488a4b1047d1b8d8e4c672edaef28cff57c9f1869fe50",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Monster\/MonsterDisplayOrderResolver.php",
+            "sha256": "466d65046bd4ad05449697bd7d88a6ccf17b0b2e6d67fb2c58a6a91c30ebc8d5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Monster\/MonsterHardening.php",
+            "sha256": "fdd2c9f0d70edf7bd44fee2a0ef8f0a4d5a4956e1dca67c5eb852db6d5b5885d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Monster\/MonsterNaturalSpawnPolicy.php",
+            "sha256": "688334c8e067a115c4cbfcf5f459857fe5d64c4d04b9cfe8bd7eed62a89c9d0e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Monster\/MonsterRewardPolicyResolver.php",
+            "sha256": "7563eeffdb807b95d4da0d62b8a6acbee41a901227bd71700b17d86e9cf27969",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Monster\/MonsterSpawnSource.php",
+            "sha256": "d2096ecb33e1fdabf7d79bb33f8c87ab9963d9bfa160059a6e4c2a6a5f5cac44",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Monster\/MonsterTurnBatch.php",
+            "sha256": "340a4ce0b6adab747c6bf111f28ab248953ea37230d68b1e18eda1c27257e866",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Nation\/GivenName.php",
+            "sha256": "9d34db31d4c01bf7a1ab0826eb5cb2d3ee9a881828989552ede344353e5175d2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Nation\/NationAbandonmentConfirmationException.php",
+            "sha256": "c38622d00a311c9a5f9fc049b890612e23562795dfc51dcb93c046c23700e5aa",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Nation\/NationAbandonmentConflictException.php",
+            "sha256": "8a1ed486adbd197516164e4a95570e6c8b008b78e9df8bc1a3a2b76ffab1e14d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Nation\/NationCreationConflictException.php",
+            "sha256": "30fe18e5e10611e22fa980cdf419d68799f00698d9edf3f780949abfd78793db",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Nation\/NationDormancyConflictException.php",
+            "sha256": "6be433055f2f60b6396c7828f584d1adf992e76c1e7cec457b7b8dd8595337cc",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Nation\/NationLifecyclePrepareStateResolver.php",
+            "sha256": "a13c0d7b3b90e79a87c85d76b5fd8096caad36679f0592a9ec847fa24ac96798",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Nation\/NationNameConflictException.php",
+            "sha256": "1530c7a06782a7e7d10001d46d90ef0b37149654b55d1f08b9588f95abaf22f1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Nation\/NationPlacementUnavailableException.php",
+            "sha256": "4f2134bcb7279d7c9f3fc3193f4ad97d6fd35b92744ad0d76fc006dcfd48756a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Nation\/NationProfileText.php",
+            "sha256": "f9cff6cabfe7bb51e514ff5a961432a144f1475eaaf5359fb8be870244276e79",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Nation\/NationProtectionPolicy.php",
+            "sha256": "f6be0eb9fac17d09f30d175f0db4caf4355f97a8e3f361eb5b3b96988302b6c2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Nation\/UserMembershipMutationLock.php",
+            "sha256": "ee743d9f54312b147b37773234bc964ad5a6c5f298bf76615e4fad1a67ca58bf",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Ruleset\/CanonicalRulesetGeneration.php",
+            "sha256": "acc3da21a1d2581963809eae7629fcccaecc022f0bfb26174d44389c2ed9af53",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Ruleset\/CurrentRulesetAuthoringInspector.php",
+            "sha256": "fc4d1193b2d1f6d78205e142ff0ce48bc1c6c604124d489326cafbfb584cc91d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Ruleset\/CurrentRulesetGuard.php",
+            "sha256": "9e5caccfc462b85946393707024f15adf5cd515dc87b763008508de1d30d9dbd",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Ruleset\/ResetRequiredException.php",
+            "sha256": "3ad858e6e7d20de823b8300cf3e0ac7ac7a3f610adf1d4906c643480776e45be",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Ruleset\/RulesetAuthoringValidator.php",
+            "sha256": "79befd79b544f30755b163f39f718d6b0ab332f3d5e84e2a653001879fc71879",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryDemographicPolicy.php",
+            "sha256": "960846774de932bb6da21c9f2f5635ad05bf1f567a4421b7b6e0b949ec4b5ad9",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryEquipmentConflictException.php",
+            "sha256": "5a938fcef8e2dc9bb24224e4327b0c2816a90b6377fa686ff8a54ba8d4a94697",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryEquipmentValidationException.php",
+            "sha256": "6bcfb20f51df08c7712c42b938f701a1dbf709e86619adb17c6ff22ee625ec68",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryInventoryException.php",
+            "sha256": "12554b6a8a6250fb01c040de44a0565b3e3b50fab8e36408a48884d2597da808",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryItemCatalog.php",
+            "sha256": "7206b3fd8d4eb2bd396755abd39d99dcf84c13a4eba29e490b211f5bf3d5b769",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryItemEffectAggregator.php",
+            "sha256": "c3a46f48e9b724cb86a0834ffd06bf157bd95fe2c7d7cc460ba6e5b336f795a7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryItemGameplayContract.php",
+            "sha256": "20245498973ce09fb9398fff54031aec4ab443174217fcb0d5f29bc1165cd71d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryItemProbability.php",
+            "sha256": "045a049e97e6af0b5a6228f1344a072ac0d40725ef9a7757ff283fe02fff7dda",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryItemTargetSafetyPolicy.php",
+            "sha256": "da8f7b16c92f325b9550459bc74b21ea7ede8a431ca615c31cf071419687be92",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryMonsterDropContract.php",
+            "sha256": "5d6d5511809a0520c8aeaf3860c90a5d8ff81ddd072e467431254daf5e33599b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryNotFoundException.php",
+            "sha256": "f43ad46a05e8b5c6d463c5ab829acde737ac447bfced17b9cb481e80813139d2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryProductionBonus.php",
+            "sha256": "643394069c019d2d1b2a7e77b135e1d1266723450706beb87fa2baee86428039",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryProfileContract.php",
+            "sha256": "48effa9dd5da3b2f6e74a16ce83fbc93289739622295219bfa01947e42771508",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretaryRingFinanceBonus.php",
+            "sha256": "5b486a82f05bf7d2dc5098530f9284837d2aebbd2e29b1318f2ec70a34cde070",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretarySkillCatalog.php",
+            "sha256": "cb5cc81052db412f71f15d5bb710172acff3055a765c028668e042f613f61c1b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Secretary\/SecretarySkillProgression.php",
+            "sha256": "1e492bfb9a99fa944b0c8aad53f6be919521411abd561d8342304a97ad7f6f44",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Ship\/SurfaceShipCatalog.php",
+            "sha256": "8460210f34748610c8c090f768a77eb8f0e80e8c6fff068aaadc85aba93b4372",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Ship\/SurfaceShipDefinition.php",
+            "sha256": "95d86d78506585f646ea5bd6984e90f925246274110296b519feeb704eebc45f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Ship\/SurfaceShipTurnBatch.php",
+            "sha256": "1e8ea92a91868a5625a2fe59b2d5515965b2d91bf7ad341353d92ab4734d2535",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/TradingPost\/TradingPostRules.php",
+            "sha256": "5f73729a4c98e8aab70883eb2861dbace81017b675786edb581f38ecec86d72e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/DeterministicRandomStream.php",
+            "sha256": "4904ed92903ff7104cc9d2990ae794685dc08e21dfcb0e7c3ae5106c2a123d47",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/GameplayTurnPhase.php",
+            "sha256": "ece02ffd9e044505f8e0a454b24ab3d03cb111c73102ed10316df8f3facc59d2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/LaunchIntent.php",
+            "sha256": "90b8c840c648d872d0826aefc56eee02143c11c875b739bfd8332a837adfcdf5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/RandomTurnSeedGenerator.php",
+            "sha256": "3313f362ad0c1c0c2d7fd2d69713861b564f6a163f85fa1c2edef1856e321aaf",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/ScaffoldTurnPhase.php",
+            "sha256": "b4fa9c8f96f9381a89cc0707be03e1880ed33eb369f5e5a3bd5ebb66f6b8edca",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/TurnAlreadyAppliedException.php",
+            "sha256": "58d9ded903709cf53e9ba71c1eaabe7f1abd461c8da73125001ac6633bd3c072",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/TurnAlreadyRunningException.php",
+            "sha256": "6cc4bf924fcd4d74ea684281731411f6122391b7d23b985e12eb1826fa17d828",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/TurnContext.php",
+            "sha256": "47aa9db98a3640a5d32da7be0fedd27a67a6ae2c3957d712825d27c05eed4f02",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/TurnOrderService.php",
+            "sha256": "8b0098b1fd9ec1f99d4d7d9bfaa114aedc4789e06942e854e9e1be69245a4fc3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/TurnPhase.php",
+            "sha256": "b7eafb44e6db93be7784b30e13068c6ec87c1c29c7b3af5333dc27b6a10d6107",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/TurnPhaseResult.php",
+            "sha256": "bfa535e0ce34e0d64595459151e6687fcb984352680c7fb65594a3ff45bd5e7c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/TurnPipeline.php",
+            "sha256": "d2f2a89b1f948c7cd0a37ad6c0efdbf9eaef431fdf2c97654ad319a16c9bf342",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/TurnRandomStreamFactory.php",
+            "sha256": "1c2f10addd4cea8d76a04c4ba760918debd285e10e8ba61c9a9319f3ad960aae",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/TurnSeedGenerator.php",
+            "sha256": "b720fe5d32bdafbd767481ed8326f28f54b5d31e58925e49cc19aec838299ebb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/TurnState.php",
+            "sha256": "c2dd7cfad209774bc2cf114aa163c48c425a8ea2c8b944620f25efd09b4c7ce2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Turn\/UnresolvedNextTurnRunException.php",
+            "sha256": "d7f0af15f486d1005b2e8b0185e8b0db4ab847233cb2bac23bf6526b6100ea95",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Area\/UndergroundAreaCapacity.php",
+            "sha256": "09fd4bfe973ec785b1821bded1e07ef3b92c375fe0f729bb57c9fa09230c0663",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/AlphaV1BuildCatalog.php",
+            "sha256": "c733bde8ea3a07ea9e16ecee47a38fb134db6dcde57a4737c183d9049949d3c8",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/AlphaV1CombatModel.php",
+            "sha256": "1f02e39dfb1a17893e725f4989e9305f409f244f13ced6fec1c7d0834331c230",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/AlphaV1CombatRules.php",
+            "sha256": "0b0a646f668687b3318f350d698624f200604a6178f9d4396836f9b4033022d4",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/BuildCombatResult.php",
+            "sha256": "2eb4767fdd37b9d7cb75b324f3d00de65828414491ced2fff7688fb81a51289a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/BuildCombatState.php",
+            "sha256": "c5a1e2e466cb8601d830ef6de10e0f523b872eb4422d9d836834e5b0d51398d4",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/BuiltInCombatAi.php",
+            "sha256": "b2b1a326abed2d1b4cf3c12fafa31e22c78dd5247079411b22a034341333bac7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/CanonicalCombatOrchestrator.php",
+            "sha256": "0d98e52dfd7d52ccbd0bb1056b8f8615de3fb7613fdea10e933c3c1d0d210353",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/CombatResult.php",
+            "sha256": "b57066d4210337e223886fc8eb3d200cb014429de789b340f528b8dd6dd4ab92",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/CombatantState.php",
+            "sha256": "7fbcafef88290c3a2878bac23a8da1500ae2726f6ef0add21c38aa766fbf7b7b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/DeterministicEquipmentGenerator.php",
+            "sha256": "6747b6ae4741d98aeeba0b8162af18eb5cad4a1ba714be46cc03e79a0d73bd63",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/EquipmentCombatEffects.php",
+            "sha256": "7de0b4156ca3bb769291f19dc49e51501b4b2b2d78cc20bcb9699a8f523a67b2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/PartyCombatResult.php",
+            "sha256": "50422e3e49ef08dfe019b33362d0499983d491c423de7eec6cc70fb96a89ade9",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/PriorityCombatAi.php",
+            "sha256": "3a6fbd656ccd838c9991863d4914a12c953b61899a74e182414fc69f3c7edf11",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/PriorityCombatAiConfiguration.php",
+            "sha256": "76535314a5544f6751045ff6efca5a619e20438f4e4e2799f29f3173538c033f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/UndergroundAwakening.php",
+            "sha256": "7c3ccffeaa8482628070286fe89ae80f908327e38e04af8cc1896b1423180944",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/UndergroundBuildValidator.php",
+            "sha256": "99550c300d27f46983040b8d1198fe6c4c5990cad121809a78ca627011fee1cc",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/UndergroundCombatEngine.php",
+            "sha256": "d9ddebed80f4fdb79d1a2726fcf480b0b36792604a8c07ff9f5a7e0287666e04",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/UndergroundCombatRules.php",
+            "sha256": "d353d5004539bd2e4e7cb42fa467acbaf5a0bb47428d5a4e73b0bb84bf82b924",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/UndergroundEquipmentScaling.php",
+            "sha256": "f249bec6be9c060470ad76227e1ecff41727c9a2b4ef0eb748ebc18fa52d23b1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Combat\/UndergroundRandom.php",
+            "sha256": "a12fb263f4d31fe2b9b7fc2d53b0a7b4fefdaf5fd0c6cc756b6035f88b500758",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Facility\/UndergroundCommandCatalog.php",
+            "sha256": "7133ede595325771a41e6231701672c6c3c95943de51ba2a0d9b8cca78c20cde",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Facility\/UndergroundCommandDefinition.php",
+            "sha256": "206d76173e6079a45468972ece1412399a0d0028f3505744bbfb653a7ed5fb9c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Intro\/UndergroundIntroStage.php",
+            "sha256": "1627631e21a98d0eb75be7f0b4a0974dd7edb52675271969f95f976873a03dd0",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/Underground\/Progression\/UndergroundCombatProgression.php",
+            "sha256": "2319cca2dfb4a6e0b0de7841342c8f61a485ec7a3bacc3fd330d358503ff60a7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/World\/DeterministicRandom.php",
+            "sha256": "3d7a1b06ed4ef6fcc002ff2b8671a85792437a524427967519d3046cae5ac553",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/World\/HakoniwaCalendar.php",
+            "sha256": "bb766b28c28403238bc9b391e96a09d167613b4dd30a3326519e0d6ddd240843",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/World\/InitialWorldBounds.php",
+            "sha256": "2e5fee7822af0baf54a9860a8f376b8ff6b0e559dc7f9a5573d563f671157612",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/World\/MapBounds.php",
+            "sha256": "3c7854a31f477c9a71d664b67891c6da62ff138f4e1e37a66a8f0b6ecb227302",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/World\/MapSpaceCoverageValidator.php",
+            "sha256": "111bfc4dabc10299833a766edfc218dda028afccebd1a4b6e014447f0d613da7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/World\/RegistrationWorldExpansionPlanner.php",
+            "sha256": "02aa18be96e7633ea6ffa2523301c12a0a6eed708443fc0ec9308fb93a0705cf",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/World\/WorldEventContext.php",
+            "sha256": "76deb59378eecd1e519f53d6b3e1a4719be5162b20156aa303d14561a0751209",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/World\/WorldGenerationProfile.php",
+            "sha256": "741527c218d3d1f2d6d7b94e30c1fff391ce9e205a5b85b1d4aaca5cbf6fcc53",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Domain\/World\/WorldMutationLock.php",
+            "sha256": "725267d0e3925a1385e4cd860889972a777cd46c4d5b1eeb98091cfa31811071",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/AdminGuideConversationTopicController.php",
+            "sha256": "d6e89df8b4c9a150ae75a435ebb7a80146e2bb8d90a53e19b58779bf5c890c51",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/AdminInquiryController.php",
+            "sha256": "a2ca6e68edcfa7afa6e91e95468d6330f93e38c546fc1c9d4377d755533472ec",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/AdminOperationsController.php",
+            "sha256": "75cc6f4d4d79a5c72e35b2139c1026f26f4577110fe3eb6ec8e7906e2e6688d7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/AnnouncementController.php",
+            "sha256": "da3dfc48c67f092343daf6effbe8e32dd26bf0c8409f9b935fdf0b2834924a1f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/ApiController.php",
+            "sha256": "4aa5f9cc0b27d155aa014b0f76c040e08b012c81bbe8fbad9d26ab600dec478a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/BoostController.php",
+            "sha256": "29b34be47fc720fce5d78b422e56ae4173bccfa4f7fea23357d82d816eca88e4",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/CommandQueueController.php",
+            "sha256": "28cc3f73bdb8a7e186f82d257ec3aa6476c1bd4025c15ac21373b568206dcce7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/CompensationWarehouseController.php",
+            "sha256": "25c8e9842c898bbb9d94acbf05c060da4d17aeb5f2df169ed83c8d596ec2cd79",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/DailyRewardController.php",
+            "sha256": "08c820ed123d1528c3964bda2e7a2e08e82f66768b5f2011593b1ebcb64698ae",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/GuideConversationController.php",
+            "sha256": "cd328c52110de2fba18ffeac98994efcfcf43804b296f3d9c73aea4b3e947376",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/InquiryController.php",
+            "sha256": "be198a057136008853265d559d0291983a0373ddeab120c4fcab94d92dc16678",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/MerchantConversationTopicController.php",
+            "sha256": "30ab8df7a772959018bcfd8d52b2b2ac6be260064ef57f801d4dcba1716fa7cd",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/MessageBoardController.php",
+            "sha256": "574772543f2e9c492a52e5b7f7e943f3945c1c7f2cef3ccb7a2e3fd26cd905d7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/NationAbandonmentController.php",
+            "sha256": "8fbbfc402b569dc5a893833e49b0127a1c73743af6e32e1076d2d1939b2a320e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/NationDormancyController.php",
+            "sha256": "eec0860964dd0b8925e85db45a9542ad1d38f34167eba7321a79218fd68488b3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/NationProfileController.php",
+            "sha256": "e8eaa0a4cdae1789377563b3481b83d460c92bc536b9dea8844982f5aba1d406",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/PlayerEventController.php",
+            "sha256": "51a1cd5252d0eea6ba2119ba32d141d608b1a11648a21f3db9209c1e3314214b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/PublicApiController.php",
+            "sha256": "169e71f6a75f4035247d584910622f5d88f5169ba53fc7a0ff61d2e3111dbfdb",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/SalePolicyController.php",
+            "sha256": "633ac5df720c9887c7440a329945855c238193370d95afcadc7cbebc9e8ea27d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/SecretaryCollectionController.php",
+            "sha256": "9176f95e73713a7397d785d16313e1e3d03068b1b4d994b366bf21832cb28049",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/SecretaryController.php",
+            "sha256": "5d887023a19eec07bb830d8edafe52ff3eb50198f212941656c9c53231acdd11",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/SecretarySynthesisController.php",
+            "sha256": "d49125326201f60cd5e614a45dad1036bca69f22088fba943ad756900d33ce45",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/SecretaryTicketGachaController.php",
+            "sha256": "2f049b810810b4ec6bba30fcda819b635be7dea1f6cd91ced6b0216d3382faee",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/SecretaryWarehouseController.php",
+            "sha256": "c2611f6e1ea5623be06d480c4aed4e3c7d308e489047ac2ad5447aa9ed19b467",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/SurfaceShipController.php",
+            "sha256": "c97f807bdd6db196cb16802c9f61769efbe9745b459d66f8b8e9b5843c239e60",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/TradingPostController.php",
+            "sha256": "1be8e8894e4d9b92bd8999e91727fe59f48b4275212eda2cf90de80d9d5d5357",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/UndergroundEquipmentController.php",
+            "sha256": "03941155db34bd5e06d10b58b90872ddc84e5aa5b834f2711007cb3c41019a3d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/UndergroundIntroController.php",
+            "sha256": "9a11e2e03634bc9879675dac338d7b451cfefb69ce36e22de5ddfd5f5a47fef8",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/UndergroundMarketController.php",
+            "sha256": "3491ee09b95da97aeebc6c9ff373a8a83a3ac5395195914d043fba3e81cdb02b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/UndergroundRequestAdmissionController.php",
+            "sha256": "dd00815b803692d0f5f724d701809040945ebb06fc32b5985687fc9ca22c25dc",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Api\/UserMonumentDesignController.php",
+            "sha256": "cd3f2e6c44103aa509d1241dfd94866cdba63bca6ebb9c69e6fc1bbaeee8548f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/AppController.php",
+            "sha256": "b92242fa877f687ee8844a58c036908f85b1e001fe8d51498c9397933e4d54ee",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/AssetController.php",
+            "sha256": "7028bb1e82d6f37bd95e8cec604b8819101f7ff8df665fc4f96b0a1e21709b1c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Auth\/OAuthController.php",
+            "sha256": "aab0931708d3da50fa43f3b6f01ae49ffc9ada3e900bc9ad0b9df6d3cd8a1bad",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/CommunityGuidelinesController.php",
+            "sha256": "8a8ff995083ec59d09d5a69a790c398832f39994217315ca3320dc6dc26139cf",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/Controller.php",
+            "sha256": "25d1c1ef8e6cc8a376553faacfba2b07d9dfaee9bdbb84f14f77517580e9deb1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Controllers\/ManualController.php",
+            "sha256": "58d3b57884a1852b4579ef1544e2c5440ba88736dc62e32a2d6584687697ba7d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Middleware\/PrivateApiResponse.php",
+            "sha256": "87f2934613be8f742d7cb0609519d82f5239dd95a6fff8e567a089ad61a7c035",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Middleware\/PublicApiResponse.php",
+            "sha256": "859f6cb44e3e1a06ce18c71b052a2afe2c7dc53846689bb6e9ac55857974d8af",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Middleware\/RequireAnnouncementAdmin.php",
+            "sha256": "1c6cc3b6fe5b01ec5395500673b2cc8dd8be5c54b914805d462337a0fdf74128",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Middleware\/RequireUndergroundRequestAdmission.php",
+            "sha256": "fd0d47b574dd50d8109403f5b2e59e0f7bb390db35b7270da31cd32e483da4d0",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/AbandonNationRequest.php",
+            "sha256": "2ed8e182197427f3b702e693eac49b3ec43b287c129e4649f80c38fb2bfbba34",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/AcquireUndergroundSkillRequest.php",
+            "sha256": "6003425cc53dd2d34a5206e786ffcbbb0783bc672b94c8f17cce917108d07259",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/AdvanceUndergroundIntroRequest.php",
+            "sha256": "615d798f601d52d4a91f597a29d429a3361eb617693afd6d6469fe87b39f9955",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/AllocateUndergroundStpRequest.php",
+            "sha256": "0f115bd4ee00f9396ce23bf9ccb18106a836264cd96a336d6f2574719f46c4a7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/CompleteUndergroundRecollectionRequest.php",
+            "sha256": "432b8a57bb3fc0f70d939d6a58d3c9179d755c7d771f04b6d3c0823d86d7f4d7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/ConfirmUndergroundBulkSellRequest.php",
+            "sha256": "8ad673ed6448d631d318116de86c4b97a31b70a4e2a49810195b83c74918c863",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/CreateNationRequest.php",
+            "sha256": "9f6353eec0eac5763e94d0e5701a4e479d08ab9694ad46c45b42459412663b7a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/DormantNationRequest.php",
+            "sha256": "05784b72f0365783f167b444963784d520a5f8ee5bb2d055982770f01bd150bc",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/EquipUndergroundEquipmentRequest.php",
+            "sha256": "1a82ee53367e8797f23a479e0079538e0a3411d93a272b1a0f96d9a7783f6bb0",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/NameSecretaryRequest.php",
+            "sha256": "cab600b4e4cf29b71ec8570377be27356f88b242b397bc75d1d233744f66b4a9",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/NameUndergroundShopkeeperRequest.php",
+            "sha256": "a1f85ad07f87f957a413a874229451314dd01cda378bfd615d09bb87972df959",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/PreviewUndergroundBulkSellRequest.php",
+            "sha256": "84a7b999def52a05ebc67e2ef31d3e05f9e8e07f24e36b0eb017aaf345d44eca",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/PurchaseUndergroundEquipmentRequest.php",
+            "sha256": "26800579faae7134ab7157886208272a2ee7f42420bab03f08f6a98ab947f20f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/RespecUndergroundProfileRequest.php",
+            "sha256": "3c01bc5a185fde71b573dd3af55605ca9a9ed515b5c555c4e9c4b4565270752d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/SaveUserMonumentDesignRequest.php",
+            "sha256": "12c6df791025aa2f64f5294d9bc8b25d4bb2d6c6ef869c90bc0e77fb90743552",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/SelectUndergroundGrowthPathRequest.php",
+            "sha256": "2ef3eecb3c3a1902b58fe1504e1a697e182ffa6d4cbd2f2ea14161a41a0fad09",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/SellUndergroundEquipmentRequest.php",
+            "sha256": "db987198d7b843a27f09a0e9b15fbf66da74e0040fa720c87077b5da078fc00d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/StoreSecretaryImageRequest.php",
+            "sha256": "fb7148b22d5cfb033d7759825cd77cf2585e4654078882c86dc86c5fc1587b6e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/SubmitInquiryRequest.php",
+            "sha256": "553f80e3e9f7cdf79e7f12ab622c4a957dd57ee378328f41b347d8d1e8d2eb6d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UndergroundBankTransferRequest.php",
+            "sha256": "d4f0c63eeca46dc04747175106e083eecf99546a921456d7dafbdbfcf14d2460",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UndergroundExploreRequest.php",
+            "sha256": "4f782ccb88d599c9c2965109d967e5f93a117c1c47c1bb59e5ac37a91e05f242",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UndergroundHuntingGroundSkipRequest.php",
+            "sha256": "3ecb81e604eea086585792c562d7de14b7c3e7d8c98a5d845a19e216cdcb927b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UndergroundIntroMutationRequest.php",
+            "sha256": "df356a6bd332a25d85e3828169f355f7f5a8aee5cd7112813bfdea88056f89f5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UndergroundPlaytestRequest.php",
+            "sha256": "684ca9d8ae642f35ea7439c78058258532af81af33d1e97177fd29f4540c544a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UndergroundTrialFightRequest.php",
+            "sha256": "715547bc2683ca0793aa59a0db1c9ef953cce156327ebcef79ce1dc47a75655e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UndergroundTrialRunRequest.php",
+            "sha256": "7fdbce7a3aaa43e769b38ad09f077847ab555eb4139a35015d580f68554eebae",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UndergroundTrialSkipRequest.php",
+            "sha256": "1bfa2662cf30bbc3e355858b4b1dfb56c963a1970a5046e48fe9a7ec11867476",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UndergroundTrialStartRequest.php",
+            "sha256": "479af1ade6089558fcbd7e36df584d55dbae1b217615757809cc187df86f6df3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UnequipUndergroundEquipmentRequest.php",
+            "sha256": "e8353a1d0062baceaefbae6daa796f7d5d3706aae128b70c667c52c48309b670",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateNationProfileRequest.php",
+            "sha256": "bae12cad64ac7dbb5dc74e2ef8022c92e270a3fd98328762c7d92ce5c5b30a9b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateSecretaryEquipmentRequest.php",
+            "sha256": "ca2be0a9e8b1b7d6b827795cf18690c6c82c9798abd459993c19ec2289c563a3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateSecretaryImageMetadataRequest.php",
+            "sha256": "34e65009da0fff03f5de6414866e9a1c966aab66b2cb78fc5e3c356a917f390f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateSecretaryImagePreferencesRequest.php",
+            "sha256": "20084895dab15ce23557475a8bc94cde5e4852f1fde1cbd498b46bc21b335d00",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateSecretaryLendingRequest.php",
+            "sha256": "f20b1b3dc3a1ebbf9cd7518094edfcb892c951443a779c455e20f1804945717c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateSecretaryPortraitPreferenceRequest.php",
+            "sha256": "5f79d54aa6a01dd71926e57667ad50deb6212b333dae2d2fc302c41a021b4de9",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateSecretaryProfileRequest.php",
+            "sha256": "980d571f9de7a8480c4c2fe4cea652cb69141913619682d45bdd912c72cd929a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateSecretaryTitleRequest.php",
+            "sha256": "bd24e016cf2bde8bbb079af1ac5914f7a4b5b66be8eecd5944a9dbfef8070422",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateUndergroundActiveLoadoutRequest.php",
+            "sha256": "63a5a7cdb428c317ea6d81c56269db2a4c15156c344e69446dde3975be593c03",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateUndergroundAiConfigurationRequest.php",
+            "sha256": "ef5fd1e4416bb3d0ab92fc866275860158243361f7684a4df1cf7b4ef57e0bb7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateUndergroundAwakeningMessageRequest.php",
+            "sha256": "adc953c4a9984e9f852551334a83a966d9cad7fab3006be7f32772ad0d049284",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateUndergroundAwakeningTechniqueRequest.php",
+            "sha256": "5637caf5d3922aa9848b5eac58d2e0b7a3ec73c34cad20ae6629d6c6a250e54b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Requests\/UpdateUndergroundRentalPartyRequest.php",
+            "sha256": "9ac630eee9a1dafa16253251f905ea79542a8a6459bd27a2966bf3e20bab02ff",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Resources\/AnnouncementResource.php",
+            "sha256": "02a627cd5e9ef5c8d7e7f276f8f0564f24e0992cdcb62bb5828cf196e234978b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Resources\/MapChunkResource.php",
+            "sha256": "1f809dec4a3546015f6003a49d1ab11171eb6f284109330f69b11f4712533ff1",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Resources\/MapSpaceResource.php",
+            "sha256": "b044846392cdc73708cd054536d629828bbf02a1e9a550c17a77aaa909ce3f3a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Resources\/MeResource.php",
+            "sha256": "160520654a652e5883ffe46ab9bf80849bc4d6ad1e7cdf2611394a067c60d340",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Resources\/NationResource.php",
+            "sha256": "97cb42269552dd70306aac51fc9dc68b4c5f600380cf0dea01d680728d7cd6bc",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Http\/Resources\/WorldResource.php",
+            "sha256": "0960983d7126e31d0447cef934f32c67648088c83493b0cc44c48d32545e285e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/Announcement.php",
+            "sha256": "ea5da1a9a2b49b24bd9c3d0fa2f92b28f6f9ece0ba17e9a950426f3c532f90dc",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/AuctionBid.php",
+            "sha256": "68b9da674a37420e084ce143140ebf9e0b45fa6eb18c2363fc14bef721755635",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/AuctionListing.php",
+            "sha256": "37230add6ee80ad2a793f6bc573aa194a0f87ae96cf6129995fd2e53762a895e",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/AuthIdentity.php",
+            "sha256": "55d4bcfb0a4fc5e2c43001b0ce8b039b340ff8f38e2227fb13cb1a3cf07e150a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/BoostOccurrence.php",
+            "sha256": "f1e500c1787c6d817b557682e2eb98501a8f7ffae157becb27dd7e108f6f392b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/BuriedTreasure.php",
+            "sha256": "e9bcf63616efcfc1dcf74c06847f2d0c2a94e0471febcaaa74971be9815fea67",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/CommandDefinition.php",
+            "sha256": "9a57e948635a617a930556e9e206c22063995fc98ccc022408a554a0ac4b9c88",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/CompensationGrant.php",
+            "sha256": "47d182b436b9deed0ced88881a8214f366c1bce8ae2ce0095fa4cb301a736312",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/CompensationGrantItem.php",
+            "sha256": "2fa2c4dacf7a5ddc2596d710bce4f89347c854508650f0fe2f7e90fde1fee259",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/FacilityDefinition.php",
+            "sha256": "542c3d4104cf26a8c524d327c20fed0267581bb4627f458440b551f9e924cac6",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/GuideConversationTopic.php",
+            "sha256": "3fbda93c479850f9d247e1a2738c7f8bd093852f2ea0dd24ad9d8dfcbcc98934",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/Inquiry.php",
+            "sha256": "5fb1156bcfaee11cf866a0b289f5ae6d10d8b38eab200f9993ba8bd3861638dc",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/IslandMessage.php",
+            "sha256": "354924dad019bc7ccbee580e604f3fda2e5d7bf1305b22c86ef029c60bac9956",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/MapCell.php",
+            "sha256": "4be321f76c0dbc090a383535d243a7e829736af9cedde9a9576e3e599e629219",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/MapChunk.php",
+            "sha256": "daf8e1f284bcedc38cde4857d32a1317a5b7db3969250a2851e3dd8305992797",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/MapSpace.php",
+            "sha256": "3b8cfb2e0de012b622905d4ee35e28ed1917382608c97d4311dc77435d187104",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/MerchantConversationTopic.php",
+            "sha256": "74af1c301ea115454d5647cac50b0982d246bd7f89d185df27e417218e40d6c2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/MonsterDefinition.php",
+            "sha256": "1ab485820c18c7eb18f92afb10a52a597501234c05a1a1f8ec110b709dfb57c7",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/MonsterInstance.php",
+            "sha256": "355e712b88d232b5a3fb0c0a13404cb3b3bd563cafd8d4b95118ca108e1352ff",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/MonsterOccupancy.php",
+            "sha256": "42d66a9d26aa5aa2920cc9426ee528400f3363967f703b66fc5018409d68bab0",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/MonumentDefinition.php",
+            "sha256": "1463e91c39b7e1044e53976a0f2d02eabf38a3704305e4c87a93642b6d7c0385",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/Nation.php",
+            "sha256": "af5456dc840b7f980644a058a379050752835b342da16f4e6309b67f63e5e2a9",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/NationAward.php",
+            "sha256": "38903cb11d58d77f9dca860a6b09c551c69021f238cb24c76c1d2303041c53e4",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/NationCapital.php",
+            "sha256": "17a6d5625c0f38577d4782d61d7e4c697af3821da8e4c4d0e90dc48ce4635b3a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/NationCommandQueue.php",
+            "sha256": "a7c0d7f381083c6cddada43a5fce60ed9a2df9d4f4c3af44f009a65f5e01b8c5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/NationCommandQueueItem.php",
+            "sha256": "1f2496924c1a51981aeca6699962278fc5cc8188dbb69102f5720572c1605cd2",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/NationMembership.php",
+            "sha256": "0c17f07253aef81ccc2db7c9f1735fa25f8880b488fdb75d744a34753ac6691c",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/NationMonsterCycleStat.php",
+            "sha256": "a721311647d48b1c277807aeaaa9aa3e8d354daa1d1d5f98157ea402a9ad2fdd",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/NationMonsterKillStat.php",
+            "sha256": "52804a4847ecce4ac124a82e53ec2460afb5d787bd80d9f5a33277cf98aa4c46",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/NationResource.php",
+            "sha256": "6e29439b00cd5c02c42d3a30ddd70bd0a4a742775d604176ec7295f7307cfa4a",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/NationResourceSalePolicy.php",
+            "sha256": "41be435b80110099d28e5641ca9c6ac5b1a9a4c6b48b5af5280656fa5bbd01ba",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/NationUndergroundFacility.php",
+            "sha256": "c210deda7a40e056dcf99a45472aa078c85bf6063fa6c7fec4a240fe790ebf06",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/ProductionDefinition.php",
+            "sha256": "dd93d40f28c0989a428e48d8bca1013ae6704529e222c232ee7acfe9944fa9d4",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/ResourceDefinition.php",
+            "sha256": "993d557cd5963fb2f1afa3c2593f5634cae88c14dbfb974f38beeb12196457c0",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/RulesetVersion.php",
+            "sha256": "59146d652d2cf8772e99ea58a6220f4573fa4200a00c0708383b5fd19613a9da",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/Secretary.php",
+            "sha256": "45c2fd57c3039fc78eb2b9536e2df4994434f2f073b46740809691caca91a049",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/SecretaryGuideConversationTotal.php",
+            "sha256": "bbed760730d9a32ec792ec9f818074842f8c1b826eb3241950430e897c15ef01",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/SecretaryImage.php",
+            "sha256": "bd501ab52e10613a2a671b0e60927d1ab37b50ad8132c9d0dfe287189e87b148",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/SecretaryItemInstance.php",
+            "sha256": "1f2173bd5449f57c10fe18b91dfb0ed5f9ae8532babcb3795e0aa0451a5d816b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/SecretaryLendingBuildSnapshot.php",
+            "sha256": "5b2ba2f29ce244b2cf24807f240d6a8b3ff0a81381cd6e904090614866f0dca3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/SecretaryLendingDailyReward.php",
+            "sha256": "19baf8c3ae91e55ee4059af0348d66653679a07696fbb1103930f6909f6b942b",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/SecretaryLendingParticipation.php",
+            "sha256": "08f255ae86ba4f5474954fd31bd3d9dfcf68b961977277bcd0f09759053b8a59",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/SecretaryLendingSetting.php",
+            "sha256": "9150d27375f8949502a59abc0cae24c98243beb4d9e82e328ff74432838f10b3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/SecretarySkill.php",
+            "sha256": "91b89e2413b19481a3d333f85858d2ee8bfa1311ee649d7149e885013a1c35a5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/SecretarySurfaceState.php",
+            "sha256": "34f5cabb619861f7df7ed409489bf441f0b1363ed634ff73deca67e6e695f4ec",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/Ship.php",
+            "sha256": "c3bafae4ff20c612fda0e7392ae9bc2817703f938736a37cf4c67ffe63d73eff",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/TerrainDefinition.php",
+            "sha256": "dc0d2c763313d457ffc4d33d0a6e7d5e17129d5abdb6a2575390ab2d5c6bb821",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/TurnRun.php",
+            "sha256": "e4a0f7a88ddcf381354ac683dd8f8c18210a88ec6dba882a7ed459222a5d71dc",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundBattle.php",
+            "sha256": "cfae4faf6c4b296c5adf8d8a0c814789ad8eaf56d2461cfa73e7d0321e425b75",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundBattleImageReference.php",
+            "sha256": "1804cf2e42d61443c720955666df1685b0375772fd3ad8b639e172f3e32e51f6",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundBattleLog.php",
+            "sha256": "a79e52e25168eef364c1bd283215e5cccb5a902bcd8480c5508c9327251bb323",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundContentClearProgress.php",
+            "sha256": "da1f486c51e16547e90b622dac06ff4f9dd88baf9d94bdde74526d3a7a3bc787",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundIntroProgress.php",
+            "sha256": "57deb22bc7da22d3750b115650f4067efe3423365d644c8f23a26b30af1faa8d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundIntroRequest.php",
+            "sha256": "112f0f3947226822c4a1e6646ecca25472f9e3757d9094de7f25d4a486a344bc",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundMarketListing.php",
+            "sha256": "c98f891f49f0b81b8704d9a98c31fca05b666123b9b3eb91a3147891d9897207",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundOwnedEquipment.php",
+            "sha256": "484417d67340b481adf985f872c63bf4d1b2ebab2152c26b8bcc86a165d73530",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundParty.php",
+            "sha256": "f77d3eabc286a03d216ae5630d76621af379c0376831de2f5f9f6a1af4b29a04",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundPartyMember.php",
+            "sha256": "46613330a149ca25bf2f6c58f988b3621b13c3ca94a40bce95ae79cc5f65eaea",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundProfile.php",
+            "sha256": "4d0ae7beb7cb9a383b2b7c4279356de85602ce4444c4f01682a06590eca7e7bd",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundSkillAllocation.php",
+            "sha256": "83431c5ebb564dfef38351ff9baebe7bd4711b474e99dbe9f0497e4a894bc3a8",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundSkipBatch.php",
+            "sha256": "4f89c82747c4d09c9429671431f6a33cfd95e343f17be92c11090574216722b6",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundSkipSettlement.php",
+            "sha256": "ebe222cd3fe8acf7e20a0eaf9d2cbdae5ab56536f97e0087123daf3d1280b52f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundTrialProgress.php",
+            "sha256": "a974fea7a26f090e259aa49cafdebdc40b5a2c74600850d76a79d54459fe6d38",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UndergroundTrialRun.php",
+            "sha256": "42b79de285e2ea5771f295b4ce6fcebedd51a13f8450b37dc70747559e0e2b76",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/User.php",
+            "sha256": "2403426bdb916b57dfdb63fcc44873534f46b8d693df8cb6fd7d098b7f1c8c09",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UserAchievement.php",
+            "sha256": "6e230b7be50b7789d3b48f324e33ff71bb6bed9bdf19808cf8d1399ec07e28e0",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UserDailyLoginClaim.php",
+            "sha256": "f03f8cdf917ce638a9a7c9e594636ec63f74596150727b9b3ffec5cde21b8688",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UserDailyQuestProgress.php",
+            "sha256": "fdd1a62acd43fc3603fe9113f903a0ef2eaf21aea7378ceb95b7e9914783e24f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UserMonumentDesign.php",
+            "sha256": "8798de0579f8e540da2d2b10281f706be89a3156cc9e561789aad243350ceb7f",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UserParadoxBalance.php",
+            "sha256": "9497bd525a71ad104d8ed924b5516d835025dedeb89476436c5c4b9fabf5a8d3",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/UserSkipTicketBalance.php",
+            "sha256": "7192be881ac9eda3889181ed8b78fb2984bcd6b2cc41119d5462d39e45549f01",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Models\/World.php",
+            "sha256": "956185d73a381806f2f7b14990af627779d30601664e25c510ea06857381f796",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Providers\/AppServiceProvider.php",
+            "sha256": "39d2fdaa791bb6530bd56fc637dd2a5e069ce085e9adc069d548c6ab33aa5801",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Rules\/PlainText.php",
+            "sha256": "13c3cda7eba8c2de20962f38d4c7ca4734c33bce4890d1e6d09fb996e1e56913",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Rules\/WebImageMime.php",
+            "sha256": "bfe66e43b9c90da85b0f04c424f5adcfa891fee0557334db10b9fc0f32c2287d",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Services\/AssetManifestResolver.php",
+            "sha256": "8ef66f3adfbfc9b5e6f03c2ad0a89f13b8fc3bfbe5c068048bacc95d8faed2a6",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Services\/ManualIndexPresenter.php",
+            "sha256": "98c2af26dacce92e059f09dbea34207a439291517fb1f525072ee0d567cbd834",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Services\/MapCellPresenter.php",
+            "sha256": "0dae9aeb3d98ccda09660d215972d63fb2f225b1db65e25f5984244a011e8cd5",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Services\/SeaAreaWeatherPresenter.php",
+            "sha256": "14957dc921d355782ed51b1557e4b62dd6c224992f6e60726bad28e7cb9b4eff",
+            "matches": true
+        },
+        {
+            "path": "product\/app\/Support\/MoneyFormatter.php",
+            "sha256": "a8ccdc5e1b03c87f044038bf108df5e1e1de20b3e1250443de77c6cee744115b",
+            "matches": true
+        },
+        {
+            "path": "product\/composer.json",
+            "sha256": "4a346e523870f10a39e3e1f9e0c254042705c4d42d9eb79c76ad55c7760dd0e3",
+            "matches": true
+        },
+        {
+            "path": "product\/composer.lock",
+            "sha256": "0703880618c3d85c9aee120e3066897b4ca686b6be1ba3cdf2d043fb28d95fba",
+            "matches": true
+        },
+        {
+            "path": "product\/phpstan.neon",
+            "sha256": "f813e097c02c9c3abc9dbf741bbab99a4c40aaf9f3d167a72c07f0ace3eabd71",
+            "matches": true
+        },
+        {
+            "path": "product\/phpunit.xml",
+            "sha256": "4590ffc9e05528a07ac16efbe4628c90b25063dd6fa508921f16d0af8df89661",
+            "matches": true
+        },
+        {
+            "path": "product\/tests\/scripts\/prepare_phpstan_schema.php",
+            "sha256": "9de51ac5c9505795f8e136876d9507e7c18e3e75e70478a70497b3ff364aabc5",
+            "matches": true
+        },
+        {
+            "path": "product\/tests\/scripts\/test_shards.php",
+            "sha256": "67c31ea28f88ecf23983085ceca85381511f26f5be5497ac446575fdf6357ba8",
+            "matches": true
+        },
+        {
+            "path": "product\/tests\/scripts\/verify_test_identifier_equivalence.sh",
+            "sha256": "2c50645f980196e9c16ce0ce013c37d3f8b6da5f97513bbb43f1e868bdf60490",
+            "matches": true
+        },
+        {
+            "path": "product\/tests\/Support\/TestShardPlanner.php",
+            "sha256": "1089735ca75d8c37a984af0fb7a46392ab7ff10025e24f73fdcd288764ad0ba3",
+            "matches": true
+        },
+        {
+            "path": "product\/database\/schema\/pgsql-schema.sql",
+            "sha256": "3978952c9de3056c297bfca03cfc8c33d2333c00386358b10a51613ece2a4fce",
+            "matches": true
+        },
+        {
+            "path": "product\/bootstrap\/app.php",
+            "sha256": "a9072bf6a29b55749a7da3a329b06bfa60de1c73c2d66c2c851ae737383dad56",
+            "matches": true
+        },
+        {
+            "path": "product\/bootstrap\/providers.php",
+            "sha256": "f720e185207a343d4c19fc99dbb317a4187efbcd7d38a303a695bbdd77ffb943",
+            "matches": true
+        }
+    ]
+}
