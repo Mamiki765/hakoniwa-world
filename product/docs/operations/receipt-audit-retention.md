@@ -2,6 +2,18 @@
 
 2026-10-19、5.6.0候補のcommand/serviceと照合したrunbook。コードが提供する操作と、本番での登録・実行実績は別であり、今回productionへの照会・整理・cron登録は行っていない。以下は自動実行の指示ではなく、operatorが承認された対象・backup・cutoffを確認して使う手順である。
 
+## 2026-10-31の導入状態の確認
+
+main `2e93ec918774ad64d787aba99fc59a7bc3e54d16`のcommand・wrapper・console routeを静的に再確認した。Ownerからは戦闘明細整理のcronが未導入との申告がある。どのcommandを指すか、本番のcrontab・直近実行・削除件数は取得していないため、個別の登録状態や実行実績は未確認として扱う。
+
+| 区分 | コード・文書にあるもの | 導入について分かる範囲 |
+|---|---|---|
+| 詳細action log | 期限切れlogを削除するcommandとwrapper。logの既定保持は1時間。既存手順の03:15 JST・1日1回は登録例 | コードの存在や登録例から本番有効と推定しない |
+| Raw receipt | aggregateとpurgeの手動経路。30日はcutoffの保持境界。preview wrapperはread-onlyで`--apply`を転送しない | 30日ごとの削除cronが実装・登録済みという証拠はない |
+| 完了battle snapshot / routine audit | それぞれ明示cutoffでpreviewし、承認後にapplyする別command | receiptの30日境界や詳細logの1時間期限と混同しない |
+
+したがって「30日」はreceipt保持境界として確認できるが、戦闘明細整理全体の実行周期としては確定していない。今回、previewを含むcommand実行・データ削除・cron登録は行っていない。導入する際は、対象command・保持対象・周期・backup・固定cutoffを別途確定する。
+
 ## 対象ごとの境界
 
 | 対象 | Command | 既定の動作 | `--apply`の効果 |
