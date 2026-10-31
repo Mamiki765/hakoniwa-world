@@ -688,7 +688,7 @@ final class DisasterTurnService
         $radius = (int) $protection['radius'];
         $cost = (int) $protection['cost_money'];
         $origin = new GridCoordinate((int) $cell->x, (int) $cell->y);
-        $candidates = $cellIndex?->cells() ?? MapCell::query()
+        $candidates = $cellIndex?->cellsWithinRadius($origin, $radius) ?? MapCell::query()
             ->where('map_space_id', $cell->map_space_id)
             ->whereBetween('x', [$cell->x - $radius, $cell->x + $radius])
             ->whereBetween('y', [$cell->y - $radius, $cell->y + $radius])

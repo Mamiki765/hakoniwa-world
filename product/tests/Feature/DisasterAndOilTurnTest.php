@@ -128,6 +128,57 @@ class DisasterAndOilTurnTest extends TestCase
         $this->assertSame([], $context->state->economicContributions($owner->id));
     }
 
+    public function test_indexed_undersea_fires_use_current_funds_and_station_state_in_fire_order(): void
+    {
+        [$world, $nation, $ruleset, $space] = $this->worldAndNation('連続海底消火国');
+        $foreign = app(NationCreationService::class)->create(User::factory()->create(), $world, '隣国消防', '試験島主');
+        $ruleset = $this->updateRuleset($ruleset, static function (array &$settings): void {
+            $settings['turn_processing']['disasters']['fire']['probability'] = ['numerator' => 1, 'denominator' => 1];
+        });
+        $cost = $ruleset->settings['turn_processing']['disasters']['fire']['undersea_protection']['cost_money'];
+        $center = $this->boundsFor($world)->center();
+        $targets = [];
+        foreach ([$center, $center->neighbor(GridCoordinate::NORTH_EAST), $center->neighbor(GridCoordinate::SOUTH_EAST)] as $coordinate) {
+            $target = $this->cellAt($space, $coordinate->x, $coordinate->y);
+            $this->setCell($target, 'sea', 'undersea_city', $nation->id, 3_000);
+            $targets[] = $target->fresh(['terrain', 'facility']);
+        }
+        $station = $this->cellAt($space, $center->x - 1, $center->y);
+        $foreignStation = $this->cellAt($space, $center->x + 1, $center->y);
+        $this->setCell($station, 'sea', 'undersea_fire_station', $nation->id, 0);
+        $this->setCell($foreignStation, 'sea', 'undersea_fire_station', $foreign->id, 0);
+        $station = $station->fresh(['terrain', 'facility']);
+        $foreignStation = $foreignStation->fresh(['terrain', 'facility']);
+        $nation->update(['money' => $cost]);
+        $foreign->update(['money' => $cost * 2]);
+        [$context, $run] = $this->context($world, $ruleset, hash('sha256', 'sequential undersea fires'), [$nation->id, $foreign->id]);
+        $index = DisasterMutableCellIndex::fromCells([...array_reverse($targets), $foreignStation, $station], [$nation->id, $foreign->id], TerrainDefinition::all());
+        $service = app(DisasterTurnService::class);
+
+        $this->assertFalse($service->processFire($context, $targets[0], $index));
+        $this->assertSame(0, (int) $nation->fresh()->money);
+        $this->assertTrue($service->processFire($context, $targets[1], $index));
+        $this->assertSame($cost * 2, (int) $foreign->fresh()->money);
+
+        // A preceding terrain mutation updates the same model held by the index.
+        app(MapCellStateService::class)->setFacility($station, null);
+        $station->owner_nation_id = null;
+        $station->save();
+        $nation->refresh()->update(['money' => $cost]);
+        $this->assertTrue($service->processFire($context, $targets[2], $index));
+        $this->assertSame($cost, (int) $nation->fresh()->money);
+        $this->assertSame($cost * 2, (int) $foreign->fresh()->money);
+        $this->assertSame('undersea_city', $targets[0]->fresh()->facility()->value('key'));
+        $this->assertNull($targets[1]->fresh()->facility_definition_id);
+        $this->assertNull($targets[2]->fresh()->facility_definition_id);
+        $events = DB::table('audit_events')
+            ->whereRaw("metadata->>'turn_run_id' = ?", [(string) $run->id])
+            ->whereIn('event_type', ['fire.extinguished_undersea', 'fire.undersea_city_destroyed'])
+            ->orderBy('id')->get(['event_type', 'x', 'y']);
+        $this->assertSame(['fire.extinguished_undersea', 'fire.undersea_city_destroyed', 'fire.undersea_city_destroyed'], $events->pluck('event_type')->all());
+        $this->assertSame(array_map(static fn (MapCell $cell): array => [$cell->x, $cell->y], $targets), $events->map(static fn (object $event): array => [$event->x, $event->y])->all());
+    }
+
     public function test_undersea_station_is_fire_immune_and_cannot_protect_ground_facilities(): void
     {
         [$world, $nation, $ruleset, $space] = $this->worldAndNation('消火区分国');
