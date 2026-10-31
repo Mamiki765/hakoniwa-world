@@ -1,12 +1,18 @@
 # 全処理の高速化調査と実装一覧 / Performance study and implementation index
 
-2026-10-31。調査・実装の基準 main は [`2e93ec918774ad64d787aba99fc59a7bc3e54d16`](https://github.com/Mamiki765/hakoniwa-world/commit/2e93ec918774ad64d787aba99fc59a7bc3e54d16)。main、open PR 全13件を実装前に確認した。本書は提案と検証の記録であり、本番適用や merge の承認ではない。
+2026-10-31。調査・実装の基準 main は [`2e93ec918774ad64d787aba99fc59a7bc3e54d16`](https://github.com/Mamiki765/hakoniwa-world/commit/2e93ec918774ad64d787aba99fc59a7bc3e54d16)。初回実装前にmainと当時のopen PR 全13件を確認し、各追補でも対象headを再確認した。本書は提案と検証の記録であり、本番適用や merge の承認ではない。
 
 ゲームの意味、抽選確率、資産・進行の整合性と、同一コード版・初期状態・seedでの再現を維持する。将来ターンの乱数系列変更はOwnerが許容しているが、今回の実装は RNG / Ruleset / schema を変更しない。旧版との乱数消費順一致を以後の全最適化へ一律に要求するものではない。
 
+## 追加: 結合全テストの確定
+
+[全suiteの結合確認](full-suite-2026-10-31.md)を完了。既存6件＋未merge #340＋#359の固定treeで、Qualityと同じ全集合のlocal実行はbackend **1343tests/19097assertions**、frontend **301tests**成功。backendのfailure/error/skip/欠落/重複は0。正式GitHub統合CI・本番・高並行負荷の保証とは区別する。
+
+#340はopen・non-draft・未mergeで、その成長保存改善は現mainに未包含。[正確なtitle/head/baseと差分](full-suite-evidence/pr340-status.md)を確認し、既採用と混同しない。
+
 ## 追加: Turn本体の保存コスト
 
-[保存経路の再調査・27run比較](turn-persistence-2026-10-31.md)を追加。優先は既存 #340（growth全Turn中央値3093→1815ms）、新規 [#359](https://github.com/Mamiki765/hakoniwa-world/pull/359) は成熟SQL3355→2245の独立追加案でCPU改善は未支持。実C1と既存6件+#340との結合回帰、地底候補の見送り、memory/sequence差も記録した。
+[保存経路の再調査・27run比較](turn-persistence-2026-10-31.md)を追加。優先は未mergeの既存 #340（growth全Turn中央値3093→1815ms）、新規 [#359](https://github.com/Mamiki765/hakoniwa-world/pull/359) は成熟SQL3355→2245の独立追加案でCPU改善は未支持。実C1と既存6件+#340との結合回帰、地底候補の見送り、memory/sequence差も記録した。
 
 ## 読む順番
 
@@ -31,7 +37,7 @@
 
 [固定headの独立レビュー記録](implementation-reviews.md)では、各確認範囲で追加P0/P1/P2なし。
 
-各変更は基準mainから独立している。[6 patchの順次適用確認](implementation-evidence/integration-patch-check.json)は、使い捨てのdetached worktreeで成功した（merge/commit/pushなし）。その後の[限定した結合runtime検証](integration-2026-10-31.md)では、Turn・横断実行・worker scopeを確認した。全suite/本番の実行保証ではない。既存 #340 → #342 → #343 のTurn書込/マス取得/領地感化スタックは今回再実装しない。#345 stage共通化、#347覚醒projection、#350取得helperも既存提案として区別する。海底消防は既存 #344 と同じファイルを使うが変更箇所が異なることを固定patchで確認する。未mergeの組合せ全体が本番で検証済みという意味ではない。
+各変更は基準mainから独立している。[6 patchの順次適用確認](implementation-evidence/integration-patch-check.json)は、使い捨てのdetached worktreeで成功した（merge/commit/pushなし）。その後の[限定した結合runtime検証](integration-2026-10-31.md)では、Turn・横断実行・worker scopeを確認した。全suite/本番の実行保証ではない。未merge候補 #340 → #342 → #343 のTurn書込/マス取得/領地感化スタックは今回再実装しない。#345 stage共通化、#347覚醒projection、#350取得helperも既存提案として区別する。海底消防は既存 #344 と同じファイルを使うが変更箇所が異なることを固定patchで確認する。未mergeの組合せ全体が本番で検証済みという意味ではない。
 
 ターン保存は[追補の順位](turn-persistence-2026-10-31.md)を優先し、既存#340、新規#359の順で採用価値を判断する。初期6件の確認順はコマンド応答 → 秘書item定義 → 地底catalog → bulk割当 → 海底消防 → Boost管理。独立性があるので必要なものから選べる。原本レポートの旧順位や「未採用」は固定時点の記録で、本PR表が今回の進捗を上書きする。
 
@@ -98,7 +104,7 @@ Library添付は正規helperのhosted tools/list段階でnetwork errorとなりp
 
 ## English
 
-This index records the fixed-main performance audit, seven independent draft optimization PRs, before/after evidence, regression checks and remaining work. The turn-persistence follow-up prioritizes existing PR #340 and adds audit batching in #359, with explicit CPU/memory limits and real C1 rollback evidence. The audit inventories 758 source files, 179 application HTTP entry points, 23 console commands, all 12 official-turn phases and 96 tables. Static coverage is distinguished from executed tests; it does not claim every branch or production workload was exercised.
+This index records the fixed-main performance audit, seven independent draft optimization PRs, before/after evidence, regression checks and remaining work. The final local combined run passed all 1,343 backend tests and 301 frontend tests, with the stated isolation and production limits. PR #340 remains open and unmerged; its changes are absent from current main. The turn-persistence follow-up prioritizes existing PR #340 and adds audit batching in #359, with explicit CPU/memory limits and real C1 rollback evidence. The audit inventories 758 source files, 179 application HTTP entry points, 23 console commands, all 12 official-turn phases and 96 tables. Static coverage is distinguished from executed tests; it does not claim every branch or production workload was exercised.
 
 The implementation preserves gameplay, probabilities, assets and reproducibility for the same code/state/seed. Future RNG-series changes are permitted by the owner, but these PRs do not change RNG, rulesets or schemas. They are independent of the existing turn-write optimization stack. Local CPU/memory/query reductions are not converted into production HTTP or whole-turn speedup promises.
 

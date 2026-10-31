@@ -1,0 +1,98 @@
+[
+  {
+    "number": 340,
+    "title": "ターン高速化: 成長マスの保存をまとめ書き（二重UPDATE解消・DeferredMapCellWriter）",
+    "head": "8509bd5c3c6666db580c6fda2a9c7ce986316642",
+    "head_ref": "claude/project-thread-nq4b7c",
+    "base_ref": "main",
+    "base": "12a4f242028e4d0bd8b8db118097762c4214b264",
+    "draft": false,
+    "state": "open",
+    "merged": false,
+    "mergeable": true
+  },
+  {
+    "number": 352,
+    "title": "perf: 一括開発計画で保存しない候補の配列割当を省く",
+    "head": "bc285270183123ea76e89a03462f7d38dfcdb37e",
+    "head_ref": "codex/perf-bulk-command-plan-20261031",
+    "base_ref": "main",
+    "base": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "draft": true,
+    "state": "open",
+    "merged": false,
+    "mergeable": true
+  },
+  {
+    "number": 353,
+    "title": "perf: 秘書アイテムの不変定義配列を再利用",
+    "head": "c33263dc018a4611d1973e8be327cdcd4835ac5e",
+    "head_ref": "codex/perf-secretary-item-catalog-20261031",
+    "base_ref": "main",
+    "base": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "draft": true,
+    "state": "open",
+    "merged": false,
+    "mergeable": true
+  },
+  {
+    "number": 354,
+    "title": "perf: Boost一覧のseries照会を一括化",
+    "head": "60d65c66f5ee0b6798bc68351201aa233b04a3f8",
+    "head_ref": "codex/perf-boost-series-projection-20261031",
+    "base_ref": "main",
+    "base": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "draft": true,
+    "state": "open",
+    "merged": false,
+    "mergeable": true
+  },
+  {
+    "number": 355,
+    "title": "perf: 海底消防の候補を近傍インデックスから取得",
+    "head": "69a5a038a21b7b2219d9ae87f125e8e0cb6c564e",
+    "head_ref": "codex/perf-fire-station-neighbors-20261031",
+    "base_ref": "main",
+    "base": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "draft": true,
+    "state": "open",
+    "merged": false,
+    "mergeable": true
+  },
+  {
+    "number": 356,
+    "title": "perf: 地底戦闘catalogの重複構築をscope内で再利用",
+    "head": "7aa89e1058416da5b7cc3b65b65a7cb3816deb83",
+    "head_ref": "codex/perf-underground-catalog-20261031",
+    "base_ref": "main",
+    "base": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "draft": true,
+    "state": "open",
+    "merged": false,
+    "mergeable": true
+  },
+  {
+    "number": 357,
+    "title": "perf: コマンド応答の対象セル・名称照会を一括化",
+    "head": "86243ae01f7671b9dad9fd450591a04b68afaec8",
+    "head_ref": "codex/perf-command-response-20261031",
+    "base_ref": "main",
+    "base": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "draft": true,
+    "state": "open",
+    "merged": false,
+    "mergeable": true
+  },
+  {
+    "number": 359,
+    "title": "perf: マス処理の監査行を記録時snapshotでまとめ書き",
+    "head": "43736136ea4d094fbdf1596be82316c20f3d3eab",
+    "head_ref": "codex/perf-turn-cell-audit-write-set-20261031",
+    "base_ref": "main",
+    "base": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "draft": true,
+    "state": "open",
+    "merged": false,
+    "mergeable": true
+  }
+]

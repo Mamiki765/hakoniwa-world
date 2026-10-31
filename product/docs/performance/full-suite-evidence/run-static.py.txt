@@ -1,0 +1,14 @@
+from pathlib import Path
+import subprocess,time,json
+root=Path('/workspace/perf-full-combined-20261031')
+docker=['env','-u','DOCKER_HOST','-u','DOCKER_CONTEXT','-u','DOCKER_TLS','-u','DOCKER_TLS_VERIFY','-u','DOCKER_CERT_PATH','docker','--host=unix:///var/run/docker.sock','exec','perf-full-php-combined-20261031']
+manifest=json.loads((root/'source-manifest.json').read_text())
+phpfiles=[f['path'].removeprefix('product/') for f in manifest['changed_files'] if f['path'].endswith('.php')]
+commands=[('composer-validate',['composer','validate','--strict','--no-check-publish']),('pint',['vendor/bin/pint','--test']+phpfiles),('analyse',['composer','analyse']),('shards-16',['php','tests/scripts/test_shards.php','verify','16','full']),('identifiers-16',['bash','tests/scripts/verify_test_identifier_equivalence.sh','16','full'])]
+results=[]
+for name,args in commands:
+    started=time.monotonic()
+    with (root/(name+'.log')).open('w') as f:r=subprocess.run(docker+args,stdout=f,stderr=subprocess.STDOUT)
+    row={'stage':name,'command':args,'exit_code':r.returncode,'seconds':time.monotonic()-started};results.append(row)
+    (root/'static-results.json').write_text(json.dumps(results,indent=2)+'\n');print(json.dumps(row),flush=True)
+    if r.returncode:break

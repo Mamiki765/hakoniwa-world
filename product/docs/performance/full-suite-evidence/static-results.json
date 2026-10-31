@@ -1,0 +1,76 @@
+[
+  {
+    "stage": "composer-validate",
+    "command": [
+      "composer",
+      "validate",
+      "--strict",
+      "--no-check-publish"
+    ],
+    "exit_code": 0,
+    "seconds": 0.5810460739994596
+  },
+  {
+    "stage": "pint",
+    "command": [
+      "vendor/bin/pint",
+      "--test",
+      "app/Application/BoostScheduleService.php",
+      "app/Application/CommandQuantitySemantics.php",
+      "app/Application/CommandQueueService.php",
+      "app/Application/CompleteTurnEngine.php",
+      "app/Application/DeferredMapCellWriter.php",
+      "app/Application/DisasterMutableCellIndex.php",
+      "app/Application/DisasterTurnService.php",
+      "app/Application/TurnEventRecorder.php",
+      "app/Application/Underground/UndergroundAlphaV1PlayerCatalog.php",
+      "app/Domain/Secretary/SecretaryItemCatalog.php",
+      "app/Domain/Turn/TurnState.php",
+      "app/Http/Controllers/Api/CommandQueueController.php",
+      "app/Providers/AppServiceProvider.php",
+      "tests/Feature/BoostScheduleTest.php",
+      "tests/Feature/CommandQueueAndSalePolicyTest.php",
+      "tests/Feature/DeferredMapCellWriterTest.php",
+      "tests/Feature/DisasterAndOilTurnTest.php",
+      "tests/Feature/TurnCellAuditBatchTest.php",
+      "tests/Feature/TurnRuntimePerformanceTest.php",
+      "tests/Underground/Unit/UndergroundRuntimeCatalogPartyAuthoringTest.php",
+      "tests/Unit/DisasterMutableCellIndexTest.php",
+      "tests/Unit/SecretaryItemGameplayContractTest.php"
+    ],
+    "exit_code": 0,
+    "seconds": 11.618988866999644
+  },
+  {
+    "stage": "analyse",
+    "command": [
+      "composer",
+      "analyse"
+    ],
+    "exit_code": 0,
+    "seconds": 101.5894947249999
+  },
+  {
+    "stage": "shards-16",
+    "command": [
+      "php",
+      "tests/scripts/test_shards.php",
+      "verify",
+      "16",
+      "full"
+    ],
+    "exit_code": 0,
+    "seconds": 0.2373112620007305
+  },
+  {
+    "stage": "identifiers-16",
+    "command": [
+      "bash",
+      "tests/scripts/verify_test_identifier_equivalence.sh",
+      "16",
+      "full"
+    ],
+    "exit_code": 0,
+    "seconds": 3.009738892000314
+  }
+]

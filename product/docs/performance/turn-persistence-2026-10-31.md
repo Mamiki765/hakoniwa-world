@@ -1,5 +1,7 @@
 # Turn保存経路の再調査・実装・比較 / Turn persistence follow-up
 
+> 後続の[全suite結合確認](full-suite-2026-10-31.md)で、固定8候補の全テスト集合をlocal実行済み。本書の「全suite未実施」等はこの先行段階の記録として保持する。本番・高並行負荷は引き続き未確認。
+
 支配的なコストを下げる第一候補は**既存 #340 の二重保存削減・成長write-set**だった。重複PRは作らない。現mainに固定patchを適用して再測定し、成長中心fixtureでは全Turn中央値3093→1815msを確認した。
 
 追加の独立案として [#359](https://github.com/Mamiki765/hakoniwa-world/pull/359) をdraftにした。`process_cells`の監査rowを記録時点で確定し、1000行/phase末にINSERTする。成熟fixtureのSQLを1110往復減らせるが、CPU改善はほぼ支持されず、phase memory増分もある。**全処理高速化・本番倍率・全branchの同値を結論しない。**

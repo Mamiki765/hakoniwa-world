@@ -901,5 +901,23 @@
     "writer_pr": 340,
     "writer_head": "8509bd5c3c6666db580c6fda2a9c7ce986316642",
     "combined_tree": "be836fa0bcdc4f8344439b6edca3254eec0ff68a"
+  },
+  "full_combined_verification": {
+    "report": "full-suite-2026-10-31.md",
+    "tree": "e14d371105d717d3df18aa2fc862deafe2b38dd3",
+    "github_combined_ci": false,
+    "local_quality_test_set_complete": true,
+    "backend_tests": 1343,
+    "backend_assertions": 19097,
+    "backend_failures": 0,
+    "backend_errors": 0,
+    "backend_skips": 0,
+    "missing_identifiers": 0,
+    "duplicate_identifiers": 0,
+    "frontend_tests": 301,
+    "matrix_indices": 16,
+    "local_slots": 4,
+    "storage_reused_within_slot": true,
+    "writer_pr340_open_unmerged": true
   }
 }

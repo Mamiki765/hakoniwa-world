@@ -1,0 +1,40 @@
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+import subprocess,json,time,datetime,threading
+
+root=Path('/workspace/perf-full-combined-20261031');out=root/'matrix';out.mkdir()
+docker=['env','-u','DOCKER_HOST','-u','DOCKER_CONTEXT','-u','DOCKER_TLS','-u','DOCKER_TLS_VERIFY','-u','DOCKER_CERT_PATH','docker','--host=unix:///var/run/docker.sock']
+lock=threading.Lock();results=[]
+def call(args, **kw):return subprocess.run(docker+args,check=True,capture_output=True,text=True,**kw).stdout
+def slot(number):
+    php=f'perf-full-php-slot{number}-20261031';pg=f'perf-full-pg-slot{number}-20261031'
+    plan='storage/framework/testing/quality-plan.json'
+    with (out/f'slot{number}-plan.log').open('w') as f:
+        for args in [['php','tests/scripts/test_shards.php','plan','16','full',plan],['php','tests/scripts/test_shards.php','plan-verify',plan]]:
+            f.write(call(['exec',php]+args))
+    (out/f'slot{number}-plan.json').write_text(call(['exec',php,'cat',plan]))
+    for index in range(number-1,16,4):
+        started=time.monotonic()
+        # Each CI index starts from a fresh synthetic database, as the service in Quality does.
+        call(['exec',pg,'psql','-U','hakoniwa','-d','postgres','-v','ON_ERROR_STOP=1','-c','DROP DATABASE IF EXISTS hakoniwa_test WITH (FORCE)','-c','CREATE DATABASE hakoniwa_test'])
+        profile_plan=call(['exec',php,'php','tests/scripts/test_shards.php','plan-profiles',plan,str(index)])
+        (out/f'shard{index+1:02d}-profiles.tsv').write_text(profile_plan)
+        profiles=[]
+        for profile in ['standard','reusable_surface','individual']:
+            files=[line.split('\t')[1] for line in profile_plan.splitlines() if line.split('\t')[0]==profile]
+            if not files:continue
+            log=out/f'shard{index+1:02d}-{profile}.log';junit=f'/evidence/matrix/shard{index+1:02d}-{profile}.xml'
+            args=['exec','-e','HAKONIWA_TEST_FIXTURE_PROFILE='+profile,'-e',f'HAKONIWA_TEST_FIXTURE_METRICS=/evidence/matrix/shard{index+1:02d}-{profile}-metrics.tsv',php,'php','-d','memory_limit=512M','vendor/bin/phpunit','--colors=never','--log-junit',junit]+files
+            start=time.monotonic()
+            with log.open('w') as f:p=subprocess.run(docker+args,stdout=f,stderr=subprocess.STDOUT)
+            profiles.append({'profile':profile,'files':files,'exit_code':p.returncode,'seconds':time.monotonic()-start,'junit':Path(junit).name})
+            if p.returncode:break
+        row={'index':index,'slot':number,'profiles':profiles,'seconds':time.monotonic()-started,'passed':all(x['exit_code']==0 for x in profiles)}
+        with lock:
+            results.append(row);(root/'matrix-results.json').write_text(json.dumps(sorted(results,key=lambda x:x['index']),indent=2)+'\n')
+            print(json.dumps({'index':index,'slot':number,'passed':row['passed'],'completed':len(results),'seconds':row['seconds']}),flush=True)
+
+start=time.monotonic();meta={'started_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'plan_shards':16,'simultaneous_slots':4,'recipe':'.github/workflows/quality.yml phpunit job, plan-profiles and three fixture processes, no filter; added JUnit output only','status':'running'}
+(root/'matrix-run.json').write_text(json.dumps(meta,indent=2)+'\n')
+with ThreadPoolExecutor(max_workers=4) as pool:list(pool.map(slot,range(1,5)))
+meta.update(status='completed',seconds=time.monotonic()-start,passed=len(results)==16 and all(x['passed'] for x in results));(root/'matrix-run.json').write_text(json.dumps(meta,indent=2)+'\n');print(json.dumps(meta),flush=True)

@@ -1,0 +1,10 @@
+{
+  "php": "8.5.8",
+  "opcache_cli": "0",
+  "pdo_pgsql": true,
+  "composer_lock_sha256": "0703880618c3d85c9aee120e3066897b4ca686b6be1ba3cdf2d043fb28d95fba",
+  "package_lock_sha256": "73bd4732a142bd6706c1d212f9c695f0df2144bf95f35cd245c6bce857106470",
+  "node": "v24.19.0",
+  "npm": "11.9.0",
+  "postgres": "postgres (PostgreSQL) 18.4 (Debian 18.4-1.pgdg12+1)"
+}

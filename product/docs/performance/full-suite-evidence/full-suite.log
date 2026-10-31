@@ -1,0 +1,170 @@
+Laravel configuration cache is absent; config:clear skipped.
+scope: full
+total discovered files: 163
+shard count: 4
+assignment strategy: deterministic_fallback
+historical timing files: 0
+historical timing sources: 0
+shard 01/04 assigned files: 41, predicted seconds: 41.000000
+shard 02/04 assigned files: 41, predicted seconds: 41.000000
+shard 03/04 assigned files: 41, predicted seconds: 41.000000
+shard 04/04 assigned files: 40, predicted seconds: 40.000000
+fixture standard files: 109
+fixture reusable_surface files: 22
+fixture individual files: 32
+union count: 163
+duplicate count: 0
+missing count: 0
+unexpected count: 0
+/var/www/html/storage/framework/testing/phpunit-parallel-ce3a4b67/manifest.json
+Parallel test manifest: storage/framework/testing/phpunit-parallel-ce3a4b67/manifest.json
+Parallel test evidence: /var/www/html/storage/framework/testing/test-evidence/phpunit-parallel-ce3a4b67
+Starting shard 01/04 with 41 files.
+Starting shard 02/04 with 41 files.
+Starting shard 03/04 with 41 files.
+Starting shard 04/04 with 40 files.
+
+===== PHPUnit shard 01/04 =====
+
+===== Fixture standard =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-ce3a4b67/phpunit-01.xml
+
+...............................................................  63 / 171 ( 36%)
+............................................................... 126 / 171 ( 73%)
+..........F..................................                   171 / 171 (100%)
+
+Time: 00:46.456, Memory: 133.00 MB
+
+There was 1 failure:
+
+1) Tests\Unit\ProductionConfigCacheEntrypointTest::test_production_apache_entrypoint_builds_runtime_config_before_exec
+Failed asserting that false is of type string.
+
+/var/www/html/tests/Unit/ProductionConfigCacheEntrypointTest.php:14
+
+FAILURES!
+Tests: 171, Assertions: 3105, Failures: 1, Warnings: 2.
+
+===== PHPUnit shard 02/04 =====
+
+===== Fixture standard =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-ce3a4b67/phpunit-02.xml
+
+...............................................................  63 / 269 ( 23%)
+............................................................... 126 / 269 ( 46%)
+............................................................... 189 / 269 ( 70%)
+............................................................... 252 / 269 ( 93%)
+.................                                               269 / 269 (100%)
+
+Time: 01:45.777, Memory: 159.00 MB
+
+OK (269 tests, 2957 assertions)
+
+===== Fixture reusable_surface =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-ce3a4b67/phpunit-02.xml
+
+...............................                                   31 / 31 (100%)
+
+Time: 00:38.204, Memory: 115.00 MB
+
+OK (31 tests, 648 assertions)
+
+===== Fixture individual =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-ce3a4b67/phpunit-02.xml
+
+...............................................                   47 / 47 (100%)
+
+Time: 02:14.930, Memory: 137.00 MB
+
+OK (47 tests, 514 assertions)
+
+===== PHPUnit shard 03/04 =====
+
+===== Fixture standard =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-ce3a4b67/phpunit-03.xml
+
+...............................................................  63 / 276 ( 22%)
+............................................................... 126 / 276 ( 45%)
+............................................................... 189 / 276 ( 68%)
+............................................................... 252 / 276 ( 91%)
+........................                                        276 / 276 (100%)
+
+Time: 02:30.584, Memory: 143.00 MB
+
+OK (276 tests, 3181 assertions)
+
+===== Fixture reusable_surface =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-ce3a4b67/phpunit-03.xml
+
+..........................................................        58 / 58 (100%)
+
+Time: 00:52.740, Memory: 113.00 MB
+
+OK (58 tests, 936 assertions)
+
+===== Fixture individual =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-ce3a4b67/phpunit-03.xml
+
+...............................                                   31 / 31 (100%)
+
+Time: 00:33.548, Memory: 127.00 MB
+
+OK (31 tests, 188 assertions)
+
+===== PHPUnit shard 04/04 =====
+
+===== Fixture standard =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-ce3a4b67/phpunit-04.xml
+
+.....F.........................................................  63 / 151 ( 41%)
+............................................................... 126 / 151 ( 83%)
+........SFS..............                                       151 / 151 (100%)
+
+Time: 00:57.216, Memory: 165.00 MB
+
+There were 2 failures:
+
+1) Tests\Feature\HotfixCommandQueueCorruptionTest::test_cancelling_the_tail_keeps_the_unchanged_prefix_visible
+Expected response status code [201] but received 503.
+Failed asserting that 503 is identical to 201.
+
+/var/www/html/vendor/laravel/framework/src/Illuminate/Testing/TestResponseAssert.php:45
+/var/www/html/vendor/laravel/framework/src/Illuminate/Testing/TestResponse.php:176
+/var/www/html/vendor/laravel/framework/src/Illuminate/Testing/Concerns/AssertsStatusCodes.php:26
+/var/www/html/tests/Feature/HotfixCommandQueueCorruptionTest.php:149
+/var/www/html/tests/Feature/HotfixCommandQueueCorruptionTest.php:117
+/var/www/html/tests/Feature/HotfixCommandQueueCorruptionTest.php:26
+
+2) Tests\Unit\DefaultInquiryAttachmentStackTest::test_apache_serves_public_attachment_paths_without_indexing
+Failed asserting that false is of type string.
+
+/var/www/html/tests/Unit/DefaultInquiryAttachmentStackTest.php:44
+
+FAILURES!
+Tests: 151, Assertions: 2278, Failures: 2, Warnings: 1, Skipped: 2.
+One or more PHPUnit shards failed.
+Script bash tests/scripts/run_parallel_tests.sh handling the test:parallel event returned with error code 1
