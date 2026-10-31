@@ -1,0 +1,26 @@
+{
+  "left": "main-growth-r1",
+  "right": "combined-growth",
+  "checks": {
+    "fixture_recipe_equal": true,
+    "input_identical": true,
+    "output_identical": true,
+    "all_table_digests_equal": true,
+    "all_phase_metrics_equal": true,
+    "phase_order_equal": true,
+    "master_seed_equal": true,
+    "rng_source_hashes_equal": true,
+    "dependency_versions_equal": true,
+    "turn_audit_identical": true,
+    "recorded_draw_fields_equal": true
+  },
+  "passed": true,
+  "captured_tables": 91,
+  "turn_audit_rows": 275,
+  "recorded_draw_fields": 254,
+  "audit_sha256": "07bd9cbfb7082b83af29f64d7292da5b6308bc5a038be3b4a65ee22dbca91066",
+  "input_sha256": "7dc774a7f4fea62e525d5d4ac15da02774a1f1415a3887f333f258998fb54d97",
+  "output_sha256": "386d1a7a0be121b4a2931ce3bde0e44145b649ddf77ffd539d809827d4e8baf1",
+  "first_input_differences": [],
+  "first_output_differences": []
+}

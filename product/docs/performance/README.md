@@ -4,6 +4,10 @@
 
 ゲームの意味、抽選確率、資産・進行の整合性と、同一コード版・初期状態・seedでの再現を維持する。将来ターンの乱数系列変更はOwnerが許容しているが、今回の実装は RNG / Ruleset / schema を変更しない。旧版との乱数消費順一致を以後の全最適化へ一律に要求するものではない。
 
+## 追加: Turn本体の保存コスト
+
+[保存経路の再調査・27run比較](turn-persistence-2026-10-31.md)を追加。優先は既存 #340（growth全Turn中央値3093→1815ms）、新規 [#359](https://github.com/Mamiki765/hakoniwa-world/pull/359) は成熟SQL3355→2245の独立追加案でCPU改善は未支持。実C1と既存6件+#340との結合回帰、地底候補の見送り、memory/sequence差も記録した。
+
 ## 読む順番
 
 1. 下のPR表で実装内容・依存・CIを確認する。
@@ -21,14 +25,15 @@
 | [#352](https://github.com/Mamiki765/hakoniwa-world/pull/352) CQ-02 bulk割当 | `bc285270183123ea76e89a03462f7d38dfcdb37e` | 1万候補の計画保持メモリ8,055,488→25,456B | 6tests/89assert＋純粋12比較 | [Quality成功](https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207185330) / [個別記録](https://github.com/Mamiki765/hakoniwa-world/blob/bc285270183123ea76e89a03462f7d38dfcdb37e/product/docs/performance/bulk-command-planning.md) | なし |
 | [#355](https://github.com/Mamiki765/hakoniwa-world/pull/355) T02 海底消防 | `69a5a038a21b7b2219d9ae87f125e8e0cb6c564e` | 9216cell候補選択20回中央値7429.29→5.52ms | 9tests/62assert＋baseline代表1/12 | [Quality成功](https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207516436) / [個別記録](https://github.com/Mamiki765/hakoniwa-world/blob/69a5a038a21b7b2219d9ae87f125e8e0cb6c564e/product/docs/performance/undersea-fire-station-neighbors.md) | なし |
 | [#354](https://github.com/Mamiki765/hakoniwa-world/pull/354) AP-02 Boost管理 | `60d65c66f5ee0b6798bc68351201aa233b04a3f8` | 1series/3開催回のSQL7→3 | 既存2tests/61assert＋SQL1/4 | [Quality成功](https://github.com/Mamiki765/hakoniwa-world/actions/runs/41207464656) / [個別記録](https://github.com/Mamiki765/hakoniwa-world/blob/60d65c66f5ee0b6798bc68351201aa233b04a3f8/product/docs/performance/boost-series-projection.md) | なし |
+| [#359](https://github.com/Mamiki765/hakoniwa-world/pull/359) Turn監査rowまとめ書き | `43736136ea4d094fbdf1596be82316c20f3d3eab` | mature全SQL3355→2245、CPUほぼ不変、phase peak増分+4MiB | 新規3テスト、実C1、限定結合回帰 | [Quality成功](https://github.com/Mamiki765/hakoniwa-world/actions/runs/41214204802) / [総合追補](turn-persistence-2026-10-31.md) | なし。既存#340が先行推奨 |
 
-全6件はdraft・未merge。[CI snapshotと完全head一覧](implementation-status.json)。文書PR自身のheadとCIは当該PRのChecksで確認する。
+表内7件はdraft・未merge。[CI snapshotと完全head一覧](implementation-status.json)。文書PR自身のheadとCIは当該PRのChecksで確認する。
 
 [固定headの独立レビュー記録](implementation-reviews.md)では、各確認範囲で追加P0/P1/P2なし。
 
 各変更は基準mainから独立している。[6 patchの順次適用確認](implementation-evidence/integration-patch-check.json)は、使い捨てのdetached worktreeで成功した（merge/commit/pushなし）。その後の[限定した結合runtime検証](integration-2026-10-31.md)では、Turn・横断実行・worker scopeを確認した。全suite/本番の実行保証ではない。既存 #340 → #342 → #343 のTurn書込/マス取得/領地感化スタックは今回再実装しない。#345 stage共通化、#347覚醒projection、#350取得helperも既存提案として区別する。海底消防は既存 #344 と同じファイルを使うが変更箇所が異なることを固定patchで確認する。未mergeの組合せ全体が本番で検証済みという意味ではない。
 
-推奨する確認順はコマンド応答 → 秘書item定義 → 地底catalog → bulk割当 → 海底消防 → Boost管理。独立性があるので必要なものから選べる。原本レポートの旧順位や「未採用」は固定時点の記録で、本PR表が今回の進捗を上書きする。
+ターン保存は[追補の順位](turn-persistence-2026-10-31.md)を優先し、既存#340、新規#359の順で採用価値を判断する。初期6件の確認順はコマンド応答 → 秘書item定義 → 地底catalog → bulk割当 → 海底消防 → Boost管理。独立性があるので必要なものから選べる。原本レポートの旧順位や「未採用」は固定時点の記録で、本PR表が今回の進捗を上書きする。
 
 ## 追加の結合runtime検証
 
@@ -46,7 +51,7 @@ SQL数・オブジェクト構築数・保持メモリは局所効果の証拠�
 
 統合台帳1,057行はファイル・処理・担当を重ねた目録で、独立した実行経路1,057本ではない。確認区分はstatic1,055、delegated1、unconfirmed1。結果欄「未確認」は2行で、Turnへの委譲1行とDB実行計画/通信負荷1行。限界欄に「未」を含む1,014行もあるため、残りすべて実行済みという意味ではない。全分岐・全負荷条件の動的網羅は主張しない。今回の変更で検証が増えた範囲はPRごとの記録へ追加し、固定監査の原本を再生成して履歴を消さない。
 
-基準版の成熟3600cell/1Nation合成Turnは3977.031ms/3355 SQL、process_cells3096.320ms/3143 SQLだった。これは成長・stage遷移の多い人工fixtureで、今回の6変更を統合した全Turn測定ではない。既存 #340 の候補効果も本数差からの推定と実測を混同しない。
+基準版の成熟3600cell/1Nation合成Turnは3977.031ms/3355 SQL、process_cells3096.320ms/3143 SQLだった。これは成長・stage遷移の多い人工fixtureで、今回の6変更を統合した全Turn測定ではない。初期監査の#340推定と、追補で新たに行った27runの実測は区別する。
 
 [今回の検証生データ](implementation-evidence/)と[測定器・ログ一式](implementation-evidence-20261031.zip)も保存した。初回の環境不足・level0 logを成功根拠から除外し、最終focused結果と区別する。
 
@@ -55,7 +60,7 @@ SQL数・オブジェクト構築数・保持メモリは局所効果の証拠�
 | 対象 | 今回の判断と次に必要な証拠 |
 |---|---|
 | bulk浅瀬候補のSQL集合化 | 不要wrapperのみ実装。全浅瀬lockと候補ごとの近接EXISTSは残る。先頭30件打切りは候補数/token/pairを変えるため不採用。 |
-| 地底装備snapshot・AI再選択 | catalog改善と分離。装備mutation前後の境界、覚醒/free-action/bossの追加同値確認が必要。48短戦の旧試作だけで全戦闘を保証しない。 |
+| 地底装備snapshot・AI再選択 | catalog改善と分離。追加3pairでは2SELECT削減のみ確認し安定latency改善は未支持、今回は見送り。装備mutation/覚醒/free-action/boss等は[追補](turn-persistence-2026-10-31.md)の未確認に残す。 |
 | Turn capacityの丸ごとcache | 建設・災害・技能等で同Turn中に入力が変わるため一律cacheは不採用。定数由来item定義だけ再利用する。 |
 | SurfaceShipCatalog / asset解決cache | Ruleset・file・config更新のinvalidationと船を含むchunkのprofileが必要。既存options/船一覧memoを重複提案しない。 |
 | 市場SQLページング | 全active取得は残存。snapshot由来のquery列・型/NULL/欠損・sort/id tieを比較する隔離proofを別記し、実移行は行わない。 |
@@ -93,7 +98,7 @@ Library添付は正規helperのhosted tools/list段階でnetwork errorとなりp
 
 ## English
 
-This index records the fixed-main performance audit, independent optimization PRs, before/after evidence, regression checks and remaining work. The audit inventories 758 source files, 179 application HTTP entry points, 23 console commands, all 12 official-turn phases and 96 tables. Static coverage is distinguished from executed tests; it does not claim every branch or production workload was exercised.
+This index records the fixed-main performance audit, seven independent draft optimization PRs, before/after evidence, regression checks and remaining work. The turn-persistence follow-up prioritizes existing PR #340 and adds audit batching in #359, with explicit CPU/memory limits and real C1 rollback evidence. The audit inventories 758 source files, 179 application HTTP entry points, 23 console commands, all 12 official-turn phases and 96 tables. Static coverage is distinguished from executed tests; it does not claim every branch or production workload was exercised.
 
 The implementation preserves gameplay, probabilities, assets and reproducibility for the same code/state/seed. Future RNG-series changes are permitted by the owner, but these PRs do not change RNG, rulesets or schemas. They are independent of the existing turn-write optimization stack. Local CPU/memory/query reductions are not converted into production HTTP or whole-turn speedup promises.
 

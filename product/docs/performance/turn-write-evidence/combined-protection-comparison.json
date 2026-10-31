@@ -1,0 +1,26 @@
+{
+  "left": "main-protection-r1",
+  "right": "combined-protection",
+  "checks": {
+    "fixture_recipe_equal": true,
+    "input_identical": true,
+    "output_identical": true,
+    "all_table_digests_equal": true,
+    "all_phase_metrics_equal": true,
+    "phase_order_equal": true,
+    "master_seed_equal": true,
+    "rng_source_hashes_equal": true,
+    "dependency_versions_equal": true,
+    "turn_audit_identical": true,
+    "recorded_draw_fields_equal": true
+  },
+  "passed": true,
+  "captured_tables": 91,
+  "turn_audit_rows": 16,
+  "recorded_draw_fields": 0,
+  "audit_sha256": "0f057a137bb39f7743d13dfb418747c992a1dbe154f17f5aeb7b99e6c93ecf7b",
+  "input_sha256": "d2abf472ea086788dae92ddee216ba36cda4d02469b8755a077d2bd5f3e3d9ae",
+  "output_sha256": "b2f7690ccb11c0e2d03ceca7786e9ae95ff90074e7ba50ea70553cf414c40e76",
+  "first_input_differences": [],
+  "first_output_differences": []
+}

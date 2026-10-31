@@ -1,0 +1,14 @@
+{
+  "baseline_source": "/workspace/perf-integration-20261031/root/cross-flow-base.json",
+  "checks": {
+    "fixture_equal": true,
+    "input_hashes_equal": true,
+    "state_equal": true,
+    "turn_equal": true,
+    "battle_equal": true,
+    "response_values_equal": true
+  },
+  "compared_tables": 25,
+  "timestamps_retained": true,
+  "limits": "Prior same-fixture baseline/current-lock/PHP8.5.8; no time speedup claim from this combined correctness run."
+}

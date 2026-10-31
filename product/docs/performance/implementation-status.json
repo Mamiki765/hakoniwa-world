@@ -891,5 +891,15 @@
         ]
       }
     }
-  ]
+  ],
+  "turn_persistence_followup": {
+    "report": "turn-persistence-2026-10-31.md",
+    "new_pr": 359,
+    "head": "43736136ea4d094fbdf1596be82316c20f3d3eab",
+    "quality_run": "https://github.com/Mamiki765/hakoniwa-world/actions/runs/41214204802",
+    "conclusion": "success",
+    "writer_pr": 340,
+    "writer_head": "8509bd5c3c6666db580c6fda2a9c7ce986316642",
+    "combined_tree": "be836fa0bcdc4f8344439b6edca3254eec0ff68a"
+  }
 }

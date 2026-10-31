@@ -1,0 +1,139 @@
+{
+  "passed": true,
+  "checks": {
+    "both_probe_checks_passed": true,
+    "same_code": true,
+    "same_composer_lock": true,
+    "same_input_all_captured_rows": true,
+    "same_master_seed": true,
+    "canonical_pipeline_classes_equal": true,
+    "gameplay_rows_and_numeric_ids_and_timestamps_equal": true,
+    "only_expected_raw_table_differences": true,
+    "ordered_audit_body_metadata_and_all_timestamps_equal": true,
+    "turn_row_equal_except_retry_diagnostics": true,
+    "successful_phase_metrics_equal": true,
+    "root_rollback_restored_gameplay_and_preexisting_audit": true,
+    "first_failed_bulk_replayed_identically_except_ids": true,
+    "same_context_identity_across_attempts": true,
+    "fresh_state_across_attempts": true,
+    "root_transaction_and_same_pdo": true,
+    "failed_scope_and_success_scope_closed": true,
+    "real_40001_after_1000_rows_visible": true,
+    "c1_attempt_diagnostics_exact": true
+  },
+  "probe_sha256": "525951a2bf914a820bd9d67765930eaa527923987ec7055b98042b03d03fa848",
+  "source_sha256": {
+    "Application/CompleteTurnEngine.php": "4c45abb8accdabcf0a00eef748495912728f02a0ff5aa24c6cd15688c9c8f59b",
+    "Application/TurnEventRecorder.php": "12e2056282cb31ade1bb813c41270ca5253c51ce34c5978a8317696aa70bcd1a",
+    "Domain/Turn/TurnState.php": "d3ae288522365d0f708eca6126161c9886c992f0f956ef0c496e1d3538c9ed74",
+    "Application/TurnRunner.php": "8583e714aad60dd5ed6269f29e66365b3696341226450851d029b2a4b0392893",
+    "Domain/Turn/TurnPipeline.php": "d2f2a89b1f948c7cd0a37ad6c0efdbf9eaef431fdf2c97654ad319a16c9bf342",
+    "Domain/Turn/GameplayTurnPhase.php": "ece02ffd9e044505f8e0a454b24ab3d03cb111c73102ed10316df8f3facc59d2",
+    "Domain/Turn/DeterministicRandomStream.php": "4904ed92903ff7104cc9d2990ae794685dc08e21dfcb0e7c3ae5106c2a123d47",
+    "Domain/Turn/TurnRandomStreamFactory.php": "1c2f10addd4cea8d76a04c4ba760918debd285e10e8ba61c9a9319f3ad960aae"
+  },
+  "captured_tables": 91,
+  "strict_gameplay_tables": 89,
+  "raw_differing_tables": [
+    "audit_events",
+    "turn_runs"
+  ],
+  "raw_full_output_equal": false,
+  "raw_audit_numeric_ids_equal": false,
+  "ordered_audit_rows": {
+    "clean": 1131,
+    "fault": 1131
+  },
+  "ordered_audit_without_ids_sha256": {
+    "clean": "06cee31faffa96f5eeb81781edcad8dd9771886d8084aa9b5e1e9c72587fa231",
+    "fault": "06cee31faffa96f5eeb81781edcad8dd9771886d8084aa9b5e1e9c72587fa231"
+  },
+  "audit_id_ranges": {
+    "clean": [
+      2,
+      1132
+    ],
+    "fault": [
+      1010,
+      2140
+    ]
+  },
+  "attempt_counts": {
+    "clean": 1,
+    "fault": 2
+  },
+  "process_cells_insert_sizes_by_attempt": {
+    "clean": [
+      [
+        1000,
+        112
+      ]
+    ],
+    "fault": [
+      [
+        1000
+      ],
+      [
+        1000,
+        112
+      ]
+    ]
+  },
+  "fault_point": {
+    "phase": "process_cells",
+    "inserted_rows_in_statement": 1000,
+    "bindings": 16000,
+    "transaction_level": 1,
+    "pdo_object_id": 1735,
+    "context_identity": {
+      "run_id": 1,
+      "world_id": 1,
+      "ruleset_id": 1,
+      "target_turn": 2,
+      "random_seed": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "batch_active_after_insert": true,
+    "buffer_rows_after_insert": 0,
+    "turn_audit_rows_visible_before_error": 1008,
+    "exception_class": "Illuminate\\Database\\QueryException",
+    "sqlstate": "40001"
+  },
+  "rollback_checkpoint": {
+    "transaction_level": 0,
+    "pdo_object_id": 1735,
+    "gameplay_and_preexisting_audit_restored": true,
+    "failed_state_batch_active": false,
+    "failed_state_buffer_rows": 0
+  },
+  "excluded_comparison_fields": {
+    "ordered_audit": [
+      "id only; metadata, subject IDs, occurred_at, created_at and updated_at are retained"
+    ],
+    "turn_runs": [
+      "attempt_count",
+      "failure_context",
+      "phase_results[*].duration_ms (removed by common capture)"
+    ],
+    "rollback_checkpoint": [
+      "turn_runs and turn_execution_slots: control records created outside game transaction"
+    ],
+    "capture_never_reads": [
+      "auth_identities",
+      "users",
+      "sessions",
+      "cache",
+      "cache_locks"
+    ],
+    "capture_excluded_columns": [
+      "attachment_token"
+    ]
+  },
+  "limitations": [
+    "The selected comparison uses one initial clean invocation and one initial fault-v2 invocation; no manual or cross-invocation retry.",
+    "An earlier fault invocation also completed C1, but its last probe assertion compared JSONB object key order. Its original fault.json/XML and reconstructed probe-v1.php.txt are retained; the external assertion was corrected before fault-v2.",
+    "This is correctness evidence, not a timing or throughput measurement.",
+    "The fault is real SQLSTATE 40001 but not an organic competing workload race.",
+    "At the post-flush fault, pending rows are already empty. The existing focused non-empty-tail test supplies that separate coverage.",
+    "Raw audit sequence IDs and retry diagnostic fields intentionally differ; full raw all-table/all-ID equivalence is not claimed."
+  ]
+}
