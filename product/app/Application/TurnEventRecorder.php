@@ -10,6 +10,29 @@ use Illuminate\Support\Facades\DB;
 
 final class TurnEventRecorder
 {
+    private const CELL_EVENT_BATCH_SIZE = 1_000;
+
+    /**
+     * Current process_cells routes do not read audit rows or independently
+     * insert successful audit events. Flush before introducing either route;
+     * other phases retain immediate writes. Capture rows at record time.
+     *
+     * @param  callable(): array<string, int>  $process
+     * @return array<string, int>
+     */
+    public function duringCellProcessing(TurnContext $context, callable $process): array
+    {
+        $context->state->beginCellAuditBatch();
+        try {
+            $metrics = $process();
+            $this->flushCellEvents($context);
+
+            return $metrics;
+        } finally {
+            $context->state->endCellAuditBatch();
+        }
+    }
+
     /** @param array<string, mixed> $metadata */
     public function record(
         TurnContext|WorldEventContext $context,
@@ -20,7 +43,7 @@ final class TurnEventRecorder
         ?string $severity = null,
         ?string $message = null,
     ): void {
-        DB::table('audit_events')->insert($this->row(
+        $row = $this->row(
             $context,
             $eventType,
             $subject,
@@ -29,7 +52,10 @@ final class TurnEventRecorder
             $severity,
             $message,
             now(),
-        ));
+        );
+        if (! $this->bufferCellEvent($context, $row)) {
+            DB::table('audit_events')->insert($row);
+        }
     }
 
     /**
@@ -58,8 +84,36 @@ final class TurnEventRecorder
             $event['message'],
             $timestamp,
         ), $events);
+        if ($context->state->cellAuditBatchActive()) {
+            foreach ($rows as $row) {
+                $this->bufferCellEvent($context, $row);
+            }
+
+            return;
+        }
         foreach (array_chunk($rows, $batchSize) as $batch) {
             DB::table('audit_events')->insert($batch);
+        }
+    }
+
+    /** @param array<string, mixed> $row */
+    private function bufferCellEvent(TurnContext|WorldEventContext $context, array $row): bool
+    {
+        if (! $context instanceof TurnContext || ! $context->state->appendCellAuditRow($row)) {
+            return false;
+        }
+        if ($context->state->cellAuditRowCount() >= self::CELL_EVENT_BATCH_SIZE) {
+            $this->flushCellEvents($context);
+        }
+
+        return true;
+    }
+
+    private function flushCellEvents(TurnContext $context): void
+    {
+        $rows = $context->state->takeCellAuditRows();
+        if ($rows !== []) {
+            DB::table('audit_events')->insert($rows);
         }
     }
 
