@@ -1,0 +1,74 @@
+Laravel configuration cache is absent; config:clear skipped.
+scope: surface
+total discovered files: 133
+shard count: 1
+assignment strategy: deterministic_fallback
+historical timing files: 0
+historical timing sources: 0
+shard 01/01 assigned files: 133, predicted seconds: 133.000000
+fixture standard files: 80
+fixture reusable_surface files: 22
+fixture individual files: 31
+union count: 133
+duplicate count: 0
+missing count: 0
+unexpected count: 0
+scope: surface
+total discovered files: 4
+shard count: 1
+assignment strategy: deterministic_fallback
+historical timing files: 0
+historical timing sources: 0
+shard 01/01 assigned files: 4, predicted seconds: 4.000000
+fixture standard files: 1
+fixture reusable_surface files: 2
+fixture individual files: 1
+union count: 4
+duplicate count: 0
+missing count: 0
+unexpected count: 0
+selected test identifiers: 4
+Focused setup: arguments=0.081082s metadata=0.064086s config_clear=0.001772s scope_plan=0.136222s phpunit_list=0.144663s focused_plan=0.058145s
+/var/www/html/storage/framework/testing/phpunit-parallel-0e681d70/manifest.json
+Parallel test manifest: storage/framework/testing/phpunit-parallel-0e681d70/manifest.json
+Parallel test evidence: /var/www/html/storage/framework/testing/test-evidence/phpunit-parallel-0e681d70
+Starting shard 01/01 with 4 files.
+
+===== PHPUnit shard 01/01 =====
+
+===== Fixture standard =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-0e681d70/phpunit-01.xml
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:02.301, Memory: 69.50 MB
+
+OK (1 test, 12 assertions)
+
+===== Fixture reusable_surface =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-0e681d70/phpunit-01.xml
+
+..                                                                  2 / 2 (100%)
+
+Time: 00:03.903, Memory: 81.00 MB
+
+OK (2 tests, 19 assertions)
+
+===== Fixture individual =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-0e681d70/phpunit-01.xml
+
+.                                                                   1 / 1 (100%)
+
+Time: 00:01.906, Memory: 71.50 MB
+
+OK (1 test, 9 assertions)
+All PHPUnit shards passed.

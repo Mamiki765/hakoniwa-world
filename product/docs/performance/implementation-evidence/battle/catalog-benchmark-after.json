@@ -1,0 +1,44 @@
+{
+    "mode": "after",
+    "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "php": "8.5.8",
+    "kind": "pure PHP, counts instrumented, no DB\/network\/application boot",
+    "iterations": 16,
+    "foundation": {
+        "elapsed_ms": 2.992508,
+        "calls": {
+            "file_reads": 16,
+            "json_decodes": 1,
+            "catalog_constructions": 1
+        },
+        "value_hash": "179bd31c0f65d70d253d051845e31f5ef283d62b92c99c55988bd0ad90cdee95"
+    },
+    "exploration": {
+        "elapsed_ms": 4.287641,
+        "calls": {
+            "file_reads": 16,
+            "json_decodes": 1,
+            "catalog_constructions": 2
+        },
+        "value_hash": "4c59e263d8572b75a766b389c96b91073da402ba7629978f731d70a379c07091"
+    },
+    "trial": {
+        "elapsed_ms": 17.072256,
+        "calls": {
+            "file_reads": 32,
+            "json_decodes": 2,
+            "catalog_constructions": 2
+        },
+        "value_hash": "f05f9fa3972f934d3eccbea625bb51561f6d417221ea734cddcd653cb30f8215"
+    },
+    "normal_encounter_preparation": {
+        "elapsed_ms": 236.219113,
+        "calls": {
+            "file_reads": 64,
+            "json_decodes": 1,
+            "catalog_constructions": 2
+        },
+        "value_hash": "0a715c65fc4a349bf89c8c4621fa89f17925117d03a70cd32081f21402befe76"
+    },
+    "peak_memory_bytes": 4194304
+}

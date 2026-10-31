@@ -1,0 +1,582 @@
+{
+  "profile": "60x60-mature",
+  "total_wall_ms": 3977.031,
+  "total_queries": 3355,
+  "phases": {
+    "prepare_turn": {
+      "queries": 17,
+      "query_time_ms": 7.05,
+      "query_types": {
+        "insert": 1,
+        "select": 16
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 0,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [],
+      "hydrated_models": {
+        "App\\Models\\Nation": 5,
+        "App\\Models\\NationCapital": 1,
+        "App\\Models\\NationMembership": 1,
+        "App\\Models\\Secretary": 1,
+        "App\\Models\\SecretaryItemInstance": 1,
+        "App\\Models\\SecretarySkill": 11,
+        "App\\Models\\SecretarySurfaceState": 1,
+        "App\\Models\\User": 1
+      },
+      "peak_memory_bytes": 0,
+      "wall_ms": 15.981,
+      "metrics": {
+        "nations": 1,
+        "ruleset_validated": true,
+        "secretary_snapshots": 1,
+        "underground_facility_snapshots": 0,
+        "participants": 1,
+        "active": 1,
+        "dormant": 0,
+        "recovery": 0,
+        "resumed": 0,
+        "recovery_resumed": 0,
+        "karma_snapshots": 1,
+        "turn_start_monsters": 0,
+        "secretary_item_effect_snapshots": 1,
+        "secretary_item_effect_items": 1
+      }
+    },
+    "calculate_terrain_context": {
+      "queries": 2,
+      "query_time_ms": 3.85,
+      "query_types": {
+        "select": 2
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 0,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [],
+      "hydrated_models": {
+        "App\\Models\\MapCell": 3600,
+        "App\\Models\\Nation": 1
+      },
+      "peak_memory_bytes": 2097152,
+      "wall_ms": 63.459,
+      "metrics": {
+        "development_nations": 1,
+        "surface_cells": 3600
+      }
+    },
+    "resolve_territory_influence": {
+      "queries": 7,
+      "query_time_ms": 23.59,
+      "query_types": {
+        "select": 7
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 0,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [],
+      "hydrated_models": {
+        "App\\Models\\FacilityDefinition": 3,
+        "App\\Models\\MapCell": 3600,
+        "App\\Models\\MapSpace": 1,
+        "App\\Models\\Nation": 1,
+        "App\\Models\\NationCapital": 1,
+        "App\\Models\\TerrainDefinition": 1
+      },
+      "peak_memory_bytes": 10485760,
+      "wall_ms": 241.098,
+      "metrics": {
+        "processed": 3600,
+        "eligible_targets": 1790,
+        "direction_draws": 1790,
+        "mutations": 0,
+        "extension_boundary": false
+      }
+    },
+    "nation_economy": {
+      "queries": 24,
+      "query_time_ms": 16.77,
+      "query_types": {
+        "insert": 4,
+        "select": 18,
+        "update": 2
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 0,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [
+        {
+          "count": 4,
+          "sql": "insert into \"audit_events\" (\"actor_user_id\", \"world_id\", \"turn\", \"nation_id\", \"x\", \"y\", \"message\", \"visibility\", \"event_type\", \"severity\", \"subject_type\", \"subject_id\", \"metadata\", \"occurred_at\", \"created_at\", \"updated_at\") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        },
+        {
+          "count": 4,
+          "sql": "select * from \"nation_resources\" where (\"nation_id\" = ? and \"resource_definition_id\" = ?) limit 1"
+        },
+        {
+          "count": 3,
+          "sql": "select * from \"nation_resources\" where \"nation_resources\".\"id\" = ? limit 1 for update"
+        },
+        {
+          "count": 2,
+          "sql": "select * from \"nations\" where \"nations\".\"id\" = ? limit 1 for update"
+        }
+      ],
+      "hydrated_models": {
+        "App\\Models\\FacilityDefinition": 3,
+        "App\\Models\\MapCell": 1801,
+        "App\\Models\\Nation": 2,
+        "App\\Models\\NationResource": 10,
+        "App\\Models\\ResourceDefinition": 7,
+        "App\\Models\\World": 1
+      },
+      "peak_memory_bytes": 0,
+      "wall_ms": 112.951,
+      "metrics": {
+        "nations": 1,
+        "wheat_produced": 0,
+        "industrial_goods_produced": 900000,
+        "minerals_produced": 0,
+        "nutrition_required": 180200,
+        "nutrition_shortage": 0,
+        "famine_nations": 0,
+        "food_overflow_sold": 0,
+        "food_overflow_revenue": 0,
+        "food_overflow_discarded": 0,
+        "undersea_city_maintenance_paid": 0,
+        "undersea_city_maintenance_failed": 0,
+        "undersea_city_industrial_goods_consumed": 0,
+        "undersea_city_minerals_consumed": 0
+      }
+    },
+    "resource_sales": {
+      "queries": 8,
+      "query_time_ms": 6.32,
+      "query_types": {
+        "select": 8
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 0,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [],
+      "hydrated_models": {
+        "App\\Models\\Nation": 1,
+        "App\\Models\\NationResource": 6,
+        "App\\Models\\NationResourceSalePolicy": 6,
+        "App\\Models\\World": 1
+      },
+      "peak_memory_bytes": 0,
+      "wall_ms": 11.119,
+      "metrics": {
+        "sales": 0,
+        "revenue": 0
+      }
+    },
+    "development_commands": {
+      "queries": 14,
+      "query_time_ms": 10.64,
+      "query_types": {
+        "insert": 3,
+        "select": 9,
+        "update": 2
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 0,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [
+        {
+          "count": 3,
+          "sql": "insert into \"audit_events\" (\"actor_user_id\", \"world_id\", \"turn\", \"nation_id\", \"x\", \"y\", \"message\", \"visibility\", \"event_type\", \"severity\", \"subject_type\", \"subject_id\", \"metadata\", \"occurred_at\", \"created_at\", \"updated_at\") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        },
+        {
+          "count": 2,
+          "sql": "select * from \"nations\" where \"nations\".\"id\" = ? limit 1 for update"
+        },
+        {
+          "count": 2,
+          "sql": "select bidder_nation_id, sum(amount) as aggregate from \"auction_bids\" where \"bidder_nation_id\" in (?) and \"status\" = ? and exists (select * from \"auction_listings\" where \"auction_bids\".\"auction_listing_id\" = \"auction_listings\".\"id\" and \"status\" = ?) group by \"bidder_nation_id\""
+        }
+      ],
+      "hydrated_models": {
+        "App\\Models\\Nation": 2,
+        "App\\Models\\World": 1
+      },
+      "peak_memory_bytes": 0,
+      "wall_ms": 17.424,
+      "metrics": {
+        "successes": 0,
+        "failures": 0,
+        "removed": 0,
+        "quantity_decrements": 0,
+        "automatic_finance": 1,
+        "finance_commands": 0,
+        "idle_counter_increments": 1,
+        "idle_counter_resets": 0,
+        "secretary_ring_nations": 0,
+        "secretary_ring_bonus_requested": 0,
+        "secretary_ring_bonus_applied": 0,
+        "secretary_ring_bonus_overflow": 0,
+        "dormancy_dormant_heartbeats": 0,
+        "dormancy_money_applied": 0,
+        "dormancy_idle_counter_increments": 0,
+        "dormancy_emergency_farms": 0,
+        "underground_facility_snapshots": 0
+      }
+    },
+    "process_cells": {
+      "queries": 3143,
+      "query_time_ms": 1556.92,
+      "query_types": {
+        "insert": 1113,
+        "select": 18,
+        "update": 2012
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 3,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [
+        {
+          "count": 1112,
+          "sql": "insert into \"audit_events\" (\"actor_user_id\", \"world_id\", \"turn\", \"nation_id\", \"x\", \"y\", \"message\", \"visibility\", \"event_type\", \"severity\", \"subject_type\", \"subject_id\", \"metadata\", \"occurred_at\", \"created_at\", \"updated_at\") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        },
+        {
+          "count": 900,
+          "sql": "update \"map_cells\" set \"facility_definition_id\" = ?, \"population\" = ?, \"version\" = ?, \"updated_at\" = ? where \"id\" = ?"
+        },
+        {
+          "count": 900,
+          "sql": "update \"map_cells\" set \"version\" = ?, \"updated_at\" = ? where \"id\" = ?"
+        },
+        {
+          "count": 207,
+          "sql": "update \"map_cells\" set \"facility_definition_id\" = ?, \"population\" = ?, \"version\" = ?, \"facility_operational_state\" = ?, \"updated_at\" = ? where \"id\" = ?"
+        },
+        {
+          "count": 4,
+          "sql": "update \"map_cells\" set \"terrain_definition_id\" = ?, \"facility_definition_id\" = ?, \"version\" = ?, \"facility_scale\" = ?, \"facility_operational_state\" = ?, \"updated_at\" = ? where \"id\" = ?"
+        }
+      ],
+      "hydrated_models": {
+        "App\\Models\\FacilityDefinition": 4,
+        "App\\Models\\MapCell": 3600,
+        "App\\Models\\MapChunk": 16,
+        "App\\Models\\MapSpace": 1,
+        "App\\Models\\Nation": 4,
+        "App\\Models\\TerrainDefinition": 4
+      },
+      "peak_memory_bytes": 4194304,
+      "wall_ms": 3096.32,
+      "metrics": {
+        "processed": 3600,
+        "forest_growth": 0,
+        "settlements_appeared": 207,
+        "population_increased": 491146,
+        "population_decreased": 0,
+        "stage_transitions": 900,
+        "riots": 0,
+        "fires": 4,
+        "oil_income": 0,
+        "oil_depleted": 0,
+        "damage_blocked": 0,
+        "monsters_killed": 0,
+        "rewards_distributed": 0,
+        "kill_stats_incremented": 0,
+        "missile_launches": 0,
+        "missile_shots_fired": 0,
+        "missile_money_spent": 0,
+        "missile_meaningful_impacts": 0,
+        "missile_ineffective_impacts": 0,
+        "missile_idle_counter_resets": 0,
+        "sea_area_weather_chunks": 16,
+        "missile_boundary_monsters": 0,
+        "secretary_old_bow_eligible_nations": 1,
+        "secretary_old_bow_attempts": 0,
+        "secretary_old_bow_triggers": 0,
+        "secretary_old_bow_misses": 0,
+        "secretary_old_bow_hits": 0,
+        "secretary_old_bow_kills": 0,
+        "secretary_old_bow_no_safe_target": 1,
+        "secretary_bow_eligible_nations": 1,
+        "secretary_bow_attempts": 0,
+        "secretary_bow_hits": 0,
+        "secretary_bow_kills": 0,
+        "secretary_mechanical_bow_finishers": 0,
+        "secretary_bow_finishers": 0,
+        "monsters_loaded": 0,
+        "monster_actions": 0,
+        "monster_moves": 0,
+        "cells_trampled": 0,
+        "defense_self_destructs": 0,
+        "maximum_moves_by_single_monster": 0,
+        "ships_loaded": 0,
+        "ship_events": 0,
+        "ship_moves": 0,
+        "ship_no_port": 0,
+        "ship_blocked": 0,
+        "ship_fuel_shortages": 0,
+        "ship_fuel_damage": 0,
+        "ship_fuel_sunk": 0,
+        "ship_oil_consumed": 0,
+        "ship_fish_applied": 0,
+        "ship_money_applied": 0,
+        "ship_secretary_experience": 0
+      }
+    },
+    "settle_deferred_effects": {
+      "queries": 1,
+      "query_time_ms": 0.81,
+      "query_types": {
+        "select": 1
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 0,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [],
+      "hydrated_models": {
+        "App\\Models\\MapSpace": 1
+      },
+      "peak_memory_bytes": 0,
+      "wall_ms": 1.471,
+      "metrics": {
+        "alliance_nations": 0,
+        "alliance_money_requested": 0,
+        "alliance_money_applied": 0,
+        "alliance_money_overflow": 0,
+        "karma_sanction_nations": 0,
+        "karma_sanction_shots": 0,
+        "karma_sanction_intercepted": 0,
+        "karma_sanction_impacts": 0
+      }
+    },
+    "global_disasters": {
+      "queries": 27,
+      "query_time_ms": 81.26,
+      "query_types": {
+        "insert": 4,
+        "select": 22,
+        "update": 1
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 4,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [
+        {
+          "count": 3,
+          "sql": "select map_cells.owner_nation_id, count(*) as aggregate from \"map_cells\" inner join \"map_spaces\" on \"map_spaces\".\"id\" = \"map_cells\".\"map_space_id\" where \"map_spaces\".\"world_id\" = ? and \"map_spaces\".\"key\" = ? and \"map_cells\".\"owner_nation_id\" in (?) and exists (select * from \"terrain_definitions\" whe"
+        },
+        {
+          "count": 2,
+          "sql": "insert into \"audit_events\" (\"actor_user_id\", \"world_id\", \"turn\", \"nation_id\", \"x\", \"y\", \"message\", \"visibility\", \"event_type\", \"severity\", \"subject_type\", \"subject_id\", \"metadata\", \"occurred_at\", \"created_at\", \"updated_at\") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        }
+      ],
+      "hydrated_models": {
+        "App\\Models\\FacilityDefinition": 5,
+        "App\\Models\\MapCell": 2292,
+        "App\\Models\\MapSpace": 1,
+        "App\\Models\\MonsterDefinition": 11,
+        "App\\Models\\Nation": 4,
+        "App\\Models\\TerrainDefinition": 10
+      },
+      "peak_memory_bytes": 6291456,
+      "wall_ms": 190.273,
+      "metrics": {
+        "executed_disasters": 1,
+        "damaged_cells": 0,
+        "land_subsidence_nations": 0,
+        "land_subsidence_changed_to_sea": 0,
+        "land_subsidence_changed_to_shallow": 0,
+        "land_subsidence_protected_mountains": 0,
+        "land_subsidence_capitals_damaged": 0,
+        "land_subsidence_central_facilities_damaged": 0,
+        "land_subsidence_affected_chunks": 0,
+        "eligible_spawn_nations": 1,
+        "spawn_draws": 1,
+        "monsters_spawned": 1,
+        "blocked_no_settlement": 0,
+        "monsters_removed_by_terrain": 0,
+        "world_sea_monster_spawn_draws": 1,
+        "world_sea_monsters_spawned": 0,
+        "world_sea_spawn_candidates": 0,
+        "world_sea_spawn_blocked_no_candidate": 0,
+        "npc_ship_spawn_draws": 1,
+        "npc_ships_spawned": 0,
+        "npc_ship_spawn_blocked": 0,
+        "natural_treasure_spawn_draws": 1,
+        "natural_treasures_spawned": 0,
+        "natural_treasure_spawn_blocked": 0
+      }
+    },
+    "aggregate_nations": {
+      "queries": 21,
+      "query_time_ms": 16.63,
+      "query_types": {
+        "select": 5,
+        "update": 16
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 1,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [
+        {
+          "count": 16,
+          "sql": "update \"map_chunks\" set \"version\" = \"version\" + 1, \"updated_at\" = ? where \"id\" = ?"
+        }
+      ],
+      "hydrated_models": {
+        "App\\Models\\FacilityDefinition": 3,
+        "App\\Models\\MapCell": 2003,
+        "App\\Models\\MapChunk": 16
+      },
+      "peak_memory_bytes": 0,
+      "wall_ms": 90.052,
+      "metrics": {
+        "nations": 1,
+        "population": 1411047,
+        "owned_land_cells": 3600,
+        "map_chunks_updated": 16
+      }
+    },
+    "enforce_capacities": {
+      "queries": 14,
+      "query_time_ms": 7.52,
+      "query_types": {
+        "insert": 4,
+        "select": 10
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 0,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [
+        {
+          "count": 3,
+          "sql": "insert into \"audit_events\" (\"actor_user_id\", \"world_id\", \"turn\", \"nation_id\", \"x\", \"y\", \"message\", \"visibility\", \"event_type\", \"severity\", \"subject_type\", \"subject_id\", \"metadata\", \"occurred_at\", \"created_at\", \"updated_at\") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        }
+      ],
+      "hydrated_models": {
+        "App\\Models\\Nation": 1,
+        "App\\Models\\NationResource": 7,
+        "App\\Models\\ResourceDefinition": 1,
+        "App\\Models\\World": 1
+      },
+      "peak_memory_bytes": 0,
+      "wall_ms": 14.128,
+      "metrics": {
+        "overflow_reports": 1,
+        "trading_post_sold": 0,
+        "trading_post_auto_relisted": 0,
+        "trading_post_unsold_returned": 0,
+        "trading_post_npc_listed": 1
+      }
+    },
+    "finalize_turn": {
+      "queries": 63,
+      "query_time_ms": 46.32,
+      "query_types": {
+        "insert": 8,
+        "select": 50,
+        "update": 5
+      },
+      "defense_lookup_queries": 0,
+      "coordinate_cell_lookup_queries": 0,
+      "active_nation_lookup_queries": 0,
+      "terrain_definition_lookup_queries": 3,
+      "monster_occupancy_lookup_queries": 0,
+      "repeated_queries": [
+        {
+          "count": 6,
+          "sql": "insert into \"audit_events\" (\"actor_user_id\", \"world_id\", \"turn\", \"nation_id\", \"x\", \"y\", \"message\", \"visibility\", \"event_type\", \"severity\", \"subject_type\", \"subject_id\", \"metadata\", \"occurred_at\", \"created_at\", \"updated_at\") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        },
+        {
+          "count": 4,
+          "sql": "select * from \"worlds\" where \"worlds\".\"id\" = ? limit 1"
+        },
+        {
+          "count": 4,
+          "sql": "select \"id\", \"nation_id\", \"ruleset_version_id\", \"layer\", \"slot_index\", \"facility_key\" from \"nation_underground_facilities\" where \"nation_id\" in (?) and \"facility_key\" = ? order by \"nation_id\" asc, \"layer\" asc, \"slot_index\" asc"
+        },
+        {
+          "count": 2,
+          "sql": "select owner_nation_id, sum(population) as aggregate from \"map_cells\" where \"owner_nation_id\" in (?) group by \"owner_nation_id\""
+        },
+        {
+          "count": 2,
+          "sql": "select * from \"nations\" where \"nations\".\"id\" = ? limit 1 for update"
+        }
+      ],
+      "hydrated_models": {
+        "App\\Models\\FacilityDefinition": 7,
+        "App\\Models\\MapCell": 14,
+        "App\\Models\\MapSpace": 1,
+        "App\\Models\\MonsterDefinition": 1,
+        "App\\Models\\MonsterInstance": 1,
+        "App\\Models\\MonsterOccupancy": 1,
+        "App\\Models\\Nation": 6,
+        "App\\Models\\NationCapital": 1,
+        "App\\Models\\RulesetVersion": 3,
+        "App\\Models\\SecretarySkill": 11,
+        "App\\Models\\SecretarySurfaceState": 1,
+        "App\\Models\\TerrainDefinition": 3,
+        "App\\Models\\World": 4
+      },
+      "peak_memory_bytes": 2097152,
+      "wall_ms": 69.523,
+      "metrics": {
+        "completed": true,
+        "target_turn": 2,
+        "secretary_experience_awarded": 1409547,
+        "secretary_charm_charges_used": 0,
+        "secretary_charm_items_changed": 0,
+        "secretary_skills_changed": 1,
+        "secretary_levels_gained": 17,
+        "secretary_monster_experience_awarded": 0,
+        "secretary_monster_experience_changed": 0,
+        "secretary_population_high_water_increase": 1409547,
+        "secretary_net_population_loss": 0,
+        "secretary_demographic_nations_awarded": 1,
+        "ecopo_exchanges": 0,
+        "ecopo_collected": 0,
+        "ecopo_paradox": 0,
+        "entered_dormant": 1,
+        "entered_recovery": 0,
+        "recovery_monsters_removed": 0,
+        "abandoned": 0,
+        "karma_nations": 1,
+        "karma_changed": 0,
+        "karma_crime_points": 0,
+        "karma_victim_reductions": 0,
+        "karma_decay_reductions": 0,
+        "karma_recovery_reductions": 0,
+        "karma_monster_kill_reductions": 0,
+        "karma_minimum_recoveries": 0,
+        "condition_awards": 1,
+        "turn_awards": 0,
+        "monster_turn_awards": 0,
+        "monster_cycle_rows_initialized": 0,
+        "monster_counted_turn": 2,
+        "monsters_alive": 1,
+        "sea_monsters_alive": 0
+      }
+    }
+  }
+}

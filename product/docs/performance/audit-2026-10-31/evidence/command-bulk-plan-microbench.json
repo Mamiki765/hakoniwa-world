@@ -1,0 +1,14 @@
+{
+  "kind": "current_method_isolated_php_algorithm_measurement",
+  "source_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "php": "8.5.8",
+  "fixture": {"active_items": 0, "candidates": 10000, "queue_limit": 30, "group_size": 1},
+  "plan_dropped_generated_wrappers": {"overflow": 9970, "fill_available": 9970},
+  "plan_inserted_counts": {"overflow": 30, "fill_available": 30},
+  "total_dropped_wrappers": 19940,
+  "elapsed_ms": 17.407372,
+  "memory_baseline_bytes": 9263272,
+  "retained_memory_delta_bytes": 8055488,
+  "peak_memory_bytes": 17585824,
+  "limits": "One current-code method invocation per policy. Candidate definitions are unused placeholders; no ORM/DB/snapshot/HTTP cost measured. No optimized candidate or whole-request speedup claim. First launch failed before algorithm execution because the initially assumed /app/vendor path was absent; corrected to the container working directory before the single successful measurement."
+}

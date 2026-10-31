@@ -1,0 +1,329 @@
+{
+    "mode": "ai_reuse",
+    "php": "8.5.8",
+    "source_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "fixture": "read-only config + pure PHP, no DB, no network",
+    "manifest_bytes": 59720,
+    "manifest_skills": 52,
+    "manifest_statuses": 10,
+    "catalog_16_calls": {
+        "elapsed_ms": 6.520538,
+        "calls": {
+            "laboratory_catalog": 16
+        },
+        "value": 52
+    },
+    "catalog_16_references": {
+        "elapsed_ms": 0.447965,
+        "calls": {
+            "laboratory_catalog": 1
+        },
+        "value": 52
+    },
+    "laboratory_32_fights": {
+        "elapsed_ms": 361.848039,
+        "calls": {
+            "random_integer": 20147,
+            "random_stream": 3939,
+            "stat": 72349,
+            "ai_select": 6232
+        },
+        "value": [
+            {
+                "seed": 1,
+                "build": "pure_attacker",
+                "rounds": 100,
+                "hash": "a4a922f36f8657bf38e5b9055c4db6cc232e3925ea0c40c281032676f37d5a44"
+            },
+            {
+                "seed": 2,
+                "build": "pure_attacker",
+                "rounds": 99,
+                "hash": "8063e07a4b5d7574bd7e8c095fb1cc55f9145e344bcfa1f067ad1f187dc38af5"
+            },
+            {
+                "seed": 3,
+                "build": "pure_attacker",
+                "rounds": 100,
+                "hash": "520d76e65125e29c8ad9c873b0c690e84568330d488862b66ef4068dc371708a"
+            },
+            {
+                "seed": 4,
+                "build": "pure_attacker",
+                "rounds": 99,
+                "hash": "7345bee141badcba771fd30adc14fd836134c249e6d06b217f3fe9530e6cdd7a"
+            },
+            {
+                "seed": 5,
+                "build": "pure_attacker",
+                "rounds": 99,
+                "hash": "0500f35d33c5b78f5fc4ecb058543b4d265a4ad275f88f094e1a4e25ed6da137"
+            },
+            {
+                "seed": 6,
+                "build": "pure_attacker",
+                "rounds": 99,
+                "hash": "9f5f8f93f8c4a0ba677436d088b6520c839d66544d19ddd35dc0f3bf3c8c6e41"
+            },
+            {
+                "seed": 7,
+                "build": "pure_attacker",
+                "rounds": 99,
+                "hash": "b955f29e497b1ecbe546bf29c197c3105e7f6bd5f615016436e8e1a75b536efd"
+            },
+            {
+                "seed": 8,
+                "build": "pure_attacker",
+                "rounds": 100,
+                "hash": "047b3ce99658f4432c384d5bdc3d89505fc7294d414c66a3e7c0baecaf56f032"
+            },
+            {
+                "seed": 1,
+                "build": "pure_tank",
+                "rounds": 100,
+                "hash": "f27b9441be7ec3c30b0e790b4801f6f4bf2b0db2ab689c58fa8e916317a60ead"
+            },
+            {
+                "seed": 2,
+                "build": "pure_tank",
+                "rounds": 100,
+                "hash": "68a6179d8aab37900c959a8e1a78d7c9ebdbe0c8a7e233102e55f30ba8abb665"
+            },
+            {
+                "seed": 3,
+                "build": "pure_tank",
+                "rounds": 100,
+                "hash": "1c92bee1df920d18df851dd576e47e306df71c2cc4de2e1e5b21f0b74474db34"
+            },
+            {
+                "seed": 4,
+                "build": "pure_tank",
+                "rounds": 100,
+                "hash": "52ec6e8ed993953b362552f19da004afa477a6c4d72bf619162e278b0b20e355"
+            },
+            {
+                "seed": 5,
+                "build": "pure_tank",
+                "rounds": 100,
+                "hash": "5b94c0bffd2a1a914bb6a1b344347cd1dd247dbb682d3d9ac5758a9283ea925c"
+            },
+            {
+                "seed": 6,
+                "build": "pure_tank",
+                "rounds": 100,
+                "hash": "839ba52719f01e168cd06e4e773fc0d2fcb6bf8eb1cbb76e198b5f571669a8e2"
+            },
+            {
+                "seed": 7,
+                "build": "pure_tank",
+                "rounds": 100,
+                "hash": "79310eb9b036f8c5e0075ce2c35a88354e2b172590a7816c1de23c7bbdae100c"
+            },
+            {
+                "seed": 8,
+                "build": "pure_tank",
+                "rounds": 100,
+                "hash": "96028461da59b14c62a15123ac734da31bf778c4e5a9dbdbde92d61f4c587c58"
+            },
+            {
+                "seed": 1,
+                "build": "pure_healer",
+                "rounds": 100,
+                "hash": "34172034781de2eb6196424bf6ee081deae6eb0915f40bc2bdf00dc3f8ba2760"
+            },
+            {
+                "seed": 2,
+                "build": "pure_healer",
+                "rounds": 100,
+                "hash": "2899100624c6fd7d432fee3e381631e1a671a2cfbfd3d990e7737b354b73e3c6"
+            },
+            {
+                "seed": 3,
+                "build": "pure_healer",
+                "rounds": 100,
+                "hash": "b4cf65366c52ab77ae378d2036d9c91e65bfe9e215e2406561ab3e635b77d0a7"
+            },
+            {
+                "seed": 4,
+                "build": "pure_healer",
+                "rounds": 100,
+                "hash": "159e73718c8b2367900dddc8596a0435b5494dc1ed1dd6f981bdb7ceb1c17e5b"
+            },
+            {
+                "seed": 5,
+                "build": "pure_healer",
+                "rounds": 100,
+                "hash": "6d66da772476df9b61a1d31722dcc669e7d167dad9031788790d2d6c6308991b"
+            },
+            {
+                "seed": 6,
+                "build": "pure_healer",
+                "rounds": 100,
+                "hash": "ff3aaca52d4528c3aebb4a189bb28c8fdb66d0dc3d69cba6797d09b378f70eaa"
+            },
+            {
+                "seed": 7,
+                "build": "pure_healer",
+                "rounds": 100,
+                "hash": "777e67376a7e8aadbc32ab422faf04e9b2d12086293b67945d9cef58e43a57bf"
+            },
+            {
+                "seed": 8,
+                "build": "pure_healer",
+                "rounds": 100,
+                "hash": "ab9c36e31df221a3afe79cd2b19822eaf9831013545900212bd52e567c71bc2f"
+            },
+            {
+                "seed": 1,
+                "build": "balanced",
+                "rounds": 100,
+                "hash": "13ee7afa66b513702b7cec038a1a12a06636c71bb4f69f01c3796a3032fd735a"
+            },
+            {
+                "seed": 2,
+                "build": "balanced",
+                "rounds": 100,
+                "hash": "e3c2ac4735f8bc9d76dd95c25899dbbb614da429458cb69c83b831b69cdc1aca"
+            },
+            {
+                "seed": 3,
+                "build": "balanced",
+                "rounds": 100,
+                "hash": "0e9ef07d775306c97ed00930c5a3192a2768d9b4852d9ea1621e92b644faea07"
+            },
+            {
+                "seed": 4,
+                "build": "balanced",
+                "rounds": 100,
+                "hash": "7c712aeee76dbfe8e5eef9404fa87bf106ef160251a65849ae326f2a9acca882"
+            },
+            {
+                "seed": 5,
+                "build": "balanced",
+                "rounds": 100,
+                "hash": "c789b555159bbffcf06b43bf84f1dbbd3f5919b96e170c491300846f1892c3e9"
+            },
+            {
+                "seed": 6,
+                "build": "balanced",
+                "rounds": 100,
+                "hash": "f664f1de218f92c7e61281abf971220d198951450ae1cfdb4ae2496cdf7d29df"
+            },
+            {
+                "seed": 7,
+                "build": "balanced",
+                "rounds": 100,
+                "hash": "330d53905024aa1aeb9670f369fceabcef63bfbcff4854f0f91d350c50d92a89"
+            },
+            {
+                "seed": 8,
+                "build": "balanced",
+                "rounds": 100,
+                "hash": "718e16ad00700fefecb41e819f09a0e20e18928c388c22b4da5d78d4f9b7928a"
+            }
+        ]
+    },
+    "runtime_8_solo_fights": {
+        "elapsed_ms": 4.224777,
+        "calls": {
+            "stat": 1100,
+            "ai_select": 100,
+            "random_integer": 300,
+            "random_stream": 90
+        },
+        "value": [
+            {
+                "seed": 1,
+                "rounds": 7,
+                "hash": "213fddf2155bb6c9ec2da0a29c9d68927368ebbc9d4f72c1efd2cd527eb09f2b"
+            },
+            {
+                "seed": 2,
+                "rounds": 6,
+                "hash": "1107208fe4e6a07864e2bc00ec7fe1faad6ec9df82a63d7f9279fac4ddd21ad9"
+            },
+            {
+                "seed": 3,
+                "rounds": 5,
+                "hash": "fb961d82ad5aac202aeea22d16feb36b0f81fc76789b516b7b8f89b75f873bfe"
+            },
+            {
+                "seed": 4,
+                "rounds": 6,
+                "hash": "40e13b68f1302ea6439cb8dbeed1e4bf31269aeff1657f42cab31aa1c3118404"
+            },
+            {
+                "seed": 5,
+                "rounds": 8,
+                "hash": "cac037ac7eafefe061d4cedc3a6dad38d46145925f72465403f61fc1985af0f9"
+            },
+            {
+                "seed": 6,
+                "rounds": 6,
+                "hash": "bd7370a6e1a7528a75de0aa67d25abf0abe1a401802b2b47fba3688437b98635"
+            },
+            {
+                "seed": 7,
+                "rounds": 6,
+                "hash": "f766360b55875868017786100cb141e130c5b49530890e069a08d80df05a87ef"
+            },
+            {
+                "seed": 8,
+                "rounds": 6,
+                "hash": "4bd9a85e056094855919fb7ba2796b79d305545db36559eb74943205b73f57bf"
+            }
+        ]
+    },
+    "runtime_8_party_fights": {
+        "elapsed_ms": 23.628849,
+        "calls": {
+            "stat": 4074,
+            "random_integer": 1661,
+            "random_stream": 898,
+            "ai_select": 356
+        },
+        "value": [
+            {
+                "seed": 1,
+                "rounds": 8,
+                "hash": "c6b0f557c84d8330a54826c7061f02526f2554645668ebc93f74d13376e89f31"
+            },
+            {
+                "seed": 2,
+                "rounds": 6,
+                "hash": "49de62687d313da80e87b83355908b3f03e1e33efa961a8bf28d8982d26fa56c"
+            },
+            {
+                "seed": 3,
+                "rounds": 8,
+                "hash": "82373358a62f0f1696e9663d1690a9453236a87c0870de02c92b53a49cb00a4a"
+            },
+            {
+                "seed": 4,
+                "rounds": 7,
+                "hash": "65e8703c9c2b2c58177b2b37a9e2cdfd80f83852f305dfbbe1e4a04e4533fd23"
+            },
+            {
+                "seed": 5,
+                "rounds": 6,
+                "hash": "561b6ee88240e0eb1d7499846c5ec5f6cc2a6434da3ccd9a4df9d8940867c7ad"
+            },
+            {
+                "seed": 6,
+                "rounds": 7,
+                "hash": "3592e211766e4c27d2d0c9f3d3d8e506c28fd4d969d0b940dac09d4d581ab4ee"
+            },
+            {
+                "seed": 7,
+                "rounds": 7,
+                "hash": "080596097725debeda7f74705f08bcf2a40e4598d78c347cfd728bfacf415df2"
+            },
+            {
+                "seed": 8,
+                "rounds": 7,
+                "hash": "5ab957d5ef5afb194948023e14ecaa9165ea1e06c0a775b23bee8cf41aa720cb"
+            }
+        ]
+    },
+    "peak_memory_bytes": 8388608
+}

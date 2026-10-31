@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="CLI Arguments" tests="4" assertions="42" errors="0" failures="0" skipped="0" time="3.749362">
+    <testsuite name="Tests\Feature\NationCapacityTest" file="/var/www/html/tests/Feature/NationCapacityTest.php" tests="1" assertions="20" errors="0" failures="0" skipped="0" time="2.017204">
+      <testcase name="test_current_capacity_resolution_modifier_boundary_and_bounded_credits" file="/var/www/html/tests/Feature/NationCapacityTest.php" line="26" class="Tests\Feature\NationCapacityTest" classname="Tests.Feature.NationCapacityTest" assertions="20" time="2.017204"/>
+    </testsuite>
+    <testsuite name="Tests\Feature\DisasterAndOilTurnTest" file="/var/www/html/tests/Feature/DisasterAndOilTurnTest.php" tests="2" assertions="19" errors="0" failures="0" skipped="0" time="1.691469">
+      <testcase name="test_indexed_undersea_fires_use_current_funds_and_station_state_in_fire_order" file="/var/www/html/tests/Feature/DisasterAndOilTurnTest.php" line="131" class="Tests\Feature\DisasterAndOilTurnTest" classname="Tests.Feature.DisasterAndOilTurnTest" assertions="12" time="1.056460"/>
+      <testcase name="test_undersea_station_is_fire_immune_and_cannot_protect_ground_facilities" file="/var/www/html/tests/Feature/DisasterAndOilTurnTest.php" line="182" class="Tests\Feature\DisasterAndOilTurnTest" classname="Tests.Feature.DisasterAndOilTurnTest" assertions="7" time="0.635009"/>
+    </testsuite>
+    <testsuite name="Tests\Unit\TurnRandomStreamTest" file="/var/www/html/tests/Unit/TurnRandomStreamTest.php" tests="1" assertions="3" errors="0" failures="0" skipped="0" time="0.040690">
+      <testcase name="test_fixed_seed_and_label_vector_is_stable" file="/var/www/html/tests/Unit/TurnRandomStreamTest.php" line="50" class="Tests\Unit\TurnRandomStreamTest" classname="Tests.Unit.TurnRandomStreamTest" assertions="3" time="0.040690"/>
+    </testsuite>
+  </testsuite>
+</testsuites>

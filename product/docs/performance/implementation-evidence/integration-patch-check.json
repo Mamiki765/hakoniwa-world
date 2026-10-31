@@ -1,0 +1,37 @@
+{
+  "base": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "method": "sequential git apply --check then apply in detached disposable worktree; no merge/commit/push",
+  "results": [
+    {
+      "head": "86243ae01f7671b9dad9fd450591a04b68afaec8",
+      "check_exit": 0,
+      "stderr": ""
+    },
+    {
+      "head": "c33263dc018a4611d1973e8be327cdcd4835ac5e",
+      "check_exit": 0,
+      "stderr": ""
+    },
+    {
+      "head": "7aa89e1058416da5b7cc3b65b65a7cb3816deb83",
+      "check_exit": 0,
+      "stderr": ""
+    },
+    {
+      "head": "bc285270183123ea76e89a03462f7d38dfcdb37e",
+      "check_exit": 0,
+      "stderr": ""
+    },
+    {
+      "head": "69a5a038a21b7b2219d9ae87f125e8e0cb6c564e",
+      "check_exit": 0,
+      "stderr": ""
+    },
+    {
+      "head": "60d65c66f5ee0b6798bc68351201aa233b04a3f8",
+      "check_exit": 0,
+      "stderr": ""
+    }
+  ],
+  "runtime_tests": false
+}

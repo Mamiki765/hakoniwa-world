@@ -1,0 +1,50 @@
+Laravel configuration cache is absent; config:clear skipped.
+scope: full
+total discovered files: 160
+shard count: 1
+assignment strategy: deterministic_fallback
+historical timing files: 0
+historical timing sources: 0
+shard 01/01 assigned files: 160, predicted seconds: 160.000000
+fixture standard files: 107
+fixture reusable_surface files: 22
+fixture individual files: 31
+union count: 160
+duplicate count: 0
+missing count: 0
+unexpected count: 0
+scope: full
+total discovered files: 3
+shard count: 1
+assignment strategy: deterministic_fallback
+historical timing files: 0
+historical timing sources: 0
+shard 01/01 assigned files: 3, predicted seconds: 3.000000
+fixture standard files: 3
+fixture reusable_surface files: 0
+fixture individual files: 0
+union count: 3
+duplicate count: 0
+missing count: 0
+unexpected count: 0
+selected test identifiers: 7
+Focused setup: arguments=0.080205s metadata=0.098139s config_clear=0.002017s scope_plan=0.157374s phpunit_list=0.441296s focused_plan=0.049001s
+/var/www/html/storage/framework/testing/phpunit-parallel-29f5e47e/manifest.json
+Parallel test manifest: storage/framework/testing/phpunit-parallel-29f5e47e/manifest.json
+Parallel test evidence: /var/www/html/storage/framework/testing/test-evidence/phpunit-parallel-29f5e47e
+Starting shard 01/01 with 3 files.
+
+===== PHPUnit shard 01/01 =====
+
+===== Fixture standard =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-29f5e47e/phpunit-01.xml
+
+.......                                                             7 / 7 (100%)
+
+Time: 00:03.732, Memory: 83.00 MB
+
+OK (7 tests, 77 assertions)
+All PHPUnit shards passed.

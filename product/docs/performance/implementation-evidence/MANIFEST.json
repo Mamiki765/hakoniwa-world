@@ -1,0 +1,336 @@
+{
+  "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "scope": "isolated implementation evidence; includes failed environment setup logs explicitly superseded by final results",
+  "files": [
+    {
+      "path": "command/CommandResponseSqlProbeTest.php",
+      "bytes": 5635,
+      "sha256": "35725621035ac8805b0855f1c67a88d1b109bba0e6c0410441c354316fc1c514"
+    },
+    {
+      "path": "command/command-phpstan.neon",
+      "bytes": 315,
+      "sha256": "817f1715c9d69ddcde20ec3fd7a8916af8f8c13207650f95d85eac374fb2946b"
+    },
+    {
+      "path": "command/command-response-after-junit.xml",
+      "bytes": 1268,
+      "sha256": "3df48221c7aa496191d2925b6562cae53f31931dde79bf1cf1710024dd2ac34e"
+    },
+    {
+      "path": "command/command-response-after-queries.json",
+      "bytes": 10388,
+      "sha256": "3f31ee8ef53f653acda637ddfea42e669d44c7986bc95b8d4341cdbc0e1372ee"
+    },
+    {
+      "path": "command/command-response-before-junit.xml",
+      "bytes": 1752,
+      "sha256": "5cd0eb8946c92d98b46fb9c9f5e328776d5e72f326ee631e971ca19a20cb6fc3"
+    },
+    {
+      "path": "command/command-response-compatibility-junit.xml",
+      "bytes": 2541,
+      "sha256": "8c228bacde355377a622f14926ddeaf36b1cbcc1219bf9f545e603be5a500aef"
+    },
+    {
+      "path": "command/command-response-final-regressions-junit.xml",
+      "bytes": 959,
+      "sha256": "7102e2e7e897bb4e3d21c70cbea77caf4fdd3b04d42f5365efa6dc686fed9202"
+    },
+    {
+      "path": "command/command-response-ship-underground-junit.xml",
+      "bytes": 6718,
+      "sha256": "19c90b6f878322da8d5a00f7195e9a87e0cf426cc171c41fe13a79e7cc102af8"
+    },
+    {
+      "path": "command/command-response-sql-probe-junit.xml",
+      "bytes": 534,
+      "sha256": "4d788b5543f72c2c8724f07a5ec6fdded7108f273f3d4e7e65fd746637569ac2"
+    },
+    {
+      "path": "command/ship-scoped/assignment.tsv",
+      "bytes": 71,
+      "sha256": "8e14b837a8e56580bd64ec83839c8335c6be3255606a5ef8d94164804a8c3e92"
+    },
+    {
+      "path": "command/ship-scoped/phpunit-01-reusable_surface.fixture.tsv",
+      "bytes": 135,
+      "sha256": "d21b450e686d347df2d8c3296188bd11f40292a5598496248759c30eb2d4edb8"
+    },
+    {
+      "path": "command/ship-scoped/phpunit-01-reusable_surface.junit.xml",
+      "bytes": 1970,
+      "sha256": "d5df294ce1f67fabe5dd64c39565f2dbc2a5fd18794ac159e69ceeb4bfe70792"
+    },
+    {
+      "path": "command/ship-scoped/phpunit-01-reusable_surface.log",
+      "bytes": 324,
+      "sha256": "553537bf10070a647450d481a7f5147e40070e429ee00c207946904c6cce89b5"
+    },
+    {
+      "path": "command/ship-scoped/phpunit-01.junit.xml",
+      "bytes": 1970,
+      "sha256": "d5df294ce1f67fabe5dd64c39565f2dbc2a5fd18794ac159e69ceeb4bfe70792"
+    },
+    {
+      "path": "command/ship-scoped/phpunit-01.log",
+      "bytes": 362,
+      "sha256": "2e066e0486dd7111509adb2781adfa7fdd38ab6425b76bb9b97be356125e9668"
+    },
+    {
+      "path": "command/ship-scoped/reusable-surface-template.fixture.tsv",
+      "bytes": 135,
+      "sha256": "92f4cfee32104460e25a81f71a55441dc4b4a9cccf142801dd9fcd70d500d4c1"
+    },
+    {
+      "path": "command/ship-scoped/reusable-surface-template.log",
+      "bytes": 336,
+      "sha256": "8c561f6dc9825459c19f2dfe5f7c493e8fe59dca7fa8c645947a3b0724956bd8"
+    },
+    {
+      "path": "command/ship-scoped/run.tsv",
+      "bytes": 2199,
+      "sha256": "681ec98fbdaa2762f99ea87012a266bc02df9f55c2db687b1766e20a6bd3bfb9"
+    },
+    {
+      "path": "command/ship-scoped/shard-plan.json",
+      "bytes": 8013,
+      "sha256": "1a2c8c36260103b33bef415054e2f047b78b8800bd4ba5a117f473aa216b21e5"
+    },
+    {
+      "path": "command/update-probe-metadata.php",
+      "bytes": 508,
+      "sha256": "70c590c6ede11e2bb8cf89fa8e0613d474dd93dfd1700d0c2329c2b885a038cb"
+    },
+    {
+      "path": "command/validation-summary.json",
+      "bytes": 2746,
+      "sha256": "c6f3e8bfd43a270a82fa9297ed4f954fefee87adb9c0d71aa5f5aadf9b3f2780"
+    },
+    {
+      "path": "battle/baseline-player-catalog.php",
+      "bytes": 65468,
+      "sha256": "14b937c3cc925eef7cd9649ace7c4e532ac4353f330620db235dfbf3ddff60d0"
+    },
+    {
+      "path": "battle/catalog-benchmark-after.json",
+      "bytes": 1368,
+      "sha256": "15de7798470b788652364aa3bfbe8504e4b8a6f37a693a6b4f187bcfee5d7970"
+    },
+    {
+      "path": "battle/catalog-benchmark-before.json",
+      "bytes": 1380,
+      "sha256": "b9ec069f1c991a144f98c5d20f53275635d4de76bff7209583790ba2ad9c373d"
+    },
+    {
+      "path": "battle/catalog-benchmark-comparison.json",
+      "bytes": 1334,
+      "sha256": "abd38089cf4025b6f2eec65132190ceac8f67c865923091f0af149d94cb0cf5f"
+    },
+    {
+      "path": "battle/catalog-benchmark.php",
+      "bytes": 4196,
+      "sha256": "df8ecedafc6bfeb6b6375951a344765cd31e6add648d4fb79eb4eab1e30cf536"
+    },
+    {
+      "path": "battle/focused-results.md",
+      "bytes": 1969,
+      "sha256": "aebf609add85da7084df8e2b09aba9999661b1757cfb3ee170a0e539bdfc3e22"
+    },
+    {
+      "path": "battle/phpstan-focused.neon",
+      "bytes": 315,
+      "sha256": "817f1715c9d69ddcde20ec3fd7a8916af8f8c13207650f95d85eac374fb2946b"
+    },
+    {
+      "path": "battle/pint-final.log",
+      "bytes": 307,
+      "sha256": "d7a9f081a6d08077e54a6db2a436d50423f29b44b4a1c648761353d84f245659"
+    },
+    {
+      "path": "turn/baseline-DisasterMutableCellIndex.php",
+      "bytes": 2442,
+      "sha256": "791ab2d3970266450fe455f994b381f48c91a0597963cc969f07bba64adc54ce"
+    },
+    {
+      "path": "turn/baseline-DisasterTurnService.php",
+      "bytes": 80244,
+      "sha256": "66197829a5e270634adb1958ab8c20a5244bd772b35f9b24eb7e2df7d3bff611"
+    },
+    {
+      "path": "turn/fire-station-baseline.log",
+      "bytes": 280,
+      "sha256": "c4088a0b9ed071f0d0116395872f6bb48bf0ffbfd7ca48155982d139a933e9b9"
+    },
+    {
+      "path": "turn/fire-station-baseline.php",
+      "bytes": 164,
+      "sha256": "47e24b4c91b719fd62347987126f9c4b97ed0078a531e8b04c8873a54f05e579"
+    },
+    {
+      "path": "turn/fire-station-baseline.xml",
+      "bytes": 579,
+      "sha256": "b90f6c11078b642dd17e7f881a33a9c75cfea1fe5cf23430f0d6c204d291e80b"
+    },
+    {
+      "path": "turn/fire-station-focused.log",
+      "bytes": 281,
+      "sha256": "2c26b6749e83f62fcfa970bfd3b5b7c54cf4ba4ab38b81789dace83c22f9cf55"
+    },
+    {
+      "path": "turn/fire-station-focused.xml",
+      "bytes": 3691,
+      "sha256": "842af2936ab5695987c1a7741d5e278d9a12a31184222b5ef6050b6ba7ef3eed"
+    },
+    {
+      "path": "turn/fire-station-manifest.json",
+      "bytes": 1407,
+      "sha256": "fabf42dd7f3e0295e102c877111eef0cfa5d6cc9d38500c7350296db839e05ec"
+    },
+    {
+      "path": "turn/fire-station-phpstan-level0.log",
+      "bytes": 285,
+      "sha256": "4b0cc75f790d1ba5bfd8548edb27203cb466cd6da60c73366f0d35ac8f9e1496"
+    },
+    {
+      "path": "turn/fire-station-phpstan.log",
+      "bytes": 83,
+      "sha256": "9dd3eeb023e498eff4ab6e14af3d76d6e6c7672da330c9e3edf35753590df0d7"
+    },
+    {
+      "path": "turn/fire-station-phpstan.neon",
+      "bytes": 315,
+      "sha256": "817f1715c9d69ddcde20ec3fd7a8916af8f8c13207650f95d85eac374fb2946b"
+    },
+    {
+      "path": "turn/fire-station-pint.log",
+      "bytes": 308,
+      "sha256": "523e7370ab1fa4f64e0ede3a9dc8c0ed4be2d3da49c6f869b3e52b05e463a4ee"
+    },
+    {
+      "path": "turn/fire-station-scale.json",
+      "bytes": 1203,
+      "sha256": "2f68419cb064e6a26d4d040ab65e6398e3ee3ad63a23b75baa4f85881b05444b"
+    },
+    {
+      "path": "turn/fire-station-scale.php",
+      "bytes": 2566,
+      "sha256": "00192e4106c9add55496a76802ea976a1081af2cda1f4f8032fcac086aa14168"
+    },
+    {
+      "path": "turn/pr344-DisasterAndOilTurnTest.php.patch",
+      "bytes": 8965,
+      "sha256": "205b25653ec52c7e99e5db61bcc23fe827095682c76b82a99fa7e7e6f0935d66"
+    },
+    {
+      "path": "turn/pr344-DisasterTurnService.php.patch",
+      "bytes": 5075,
+      "sha256": "dd3012e2a079e4021a91561e8d7f610f85fbcd5684a5fa5f2010151a366e4bb7"
+    },
+    {
+      "path": "catalog/catalog-bench.json",
+      "bytes": 5477,
+      "sha256": "841f95685e2e7abb3fae21fb758b98850e2401f4859ae8c8d397ca73e8a9a4ed"
+    },
+    {
+      "path": "catalog/focused-gameplay.log",
+      "bytes": 15362,
+      "sha256": "c93e6c48a3009ff7575f71e495e7423c1af1c5cc490829adbf3bd3c9ac076297"
+    },
+    {
+      "path": "catalog/focused-inventory-recheck.log",
+      "bytes": 280,
+      "sha256": "a537aea33e138e98e44bec59cc1d11e7360ca2b5112554af7e1b937c6583fd3d"
+    },
+    {
+      "path": "catalog/phpstan-catalog.neon",
+      "bytes": 142,
+      "sha256": "f83732c2a2417f5478243a510d23541a3a0ff17670a8d857dffaf17f5514b041"
+    },
+    {
+      "path": "catalog/phpstan.log",
+      "bytes": 83,
+      "sha256": "9dd3eeb023e498eff4ab6e14af3d76d6e6c7672da330c9e3edf35753590df0d7"
+    },
+    {
+      "path": "catalog/pint.log",
+      "bytes": 306,
+      "sha256": "1e01d02d2cb94fb59b56f79e03119ad172f19f4014e72ffc4c2de02625ba631e"
+    },
+    {
+      "path": "catalog/scripts/catalog-before.php",
+      "bytes": 27125,
+      "sha256": "f0a01eccb93275a4db9d48212ae431a295c47a5337b4d1cf5ab2fbcfd2dd9831"
+    },
+    {
+      "path": "catalog/scripts/catalog-bench.php",
+      "bytes": 2876,
+      "sha256": "105f81fe2182253da6f5c161bb3c4383da1fe508e9528357fe6868ab487b094d"
+    },
+    {
+      "path": "catalog/unit-catalog.log",
+      "bytes": 282,
+      "sha256": "e8f5d69892e0bbb8e267162948a8e39e3800ac6cea65b7d669cae62f6e18297e"
+    },
+    {
+      "path": "boost/BoostSeriesSqlAfterProbeTest.php",
+      "bytes": 3684,
+      "sha256": "f07780f1234101e5679072907bdb2c9309593b74f99507aebfb6516f965bd1aa"
+    },
+    {
+      "path": "boost/additional-api-proof.md",
+      "bytes": 3924,
+      "sha256": "1950d94b17e9e01c02936f6c73210b48dc01338c4b72ec4546bc7c2aeff0a0ca"
+    },
+    {
+      "path": "boost/boost-series-after-annotated.json",
+      "bytes": 1347,
+      "sha256": "b9cdb52e35bdff0ff01ff87676fd4d4c4edc3b7dde9f96387c8541a8f30f2b92"
+    },
+    {
+      "path": "boost/boost-series-after.json",
+      "bytes": 1244,
+      "sha256": "5992df42eabb33b027ddc40825cd9bc0368b8dec0e4cf37d61df9ef2267cfc4c"
+    },
+    {
+      "path": "boost/implementation-result.json",
+      "bytes": 1324,
+      "sha256": "c77bddbd29a24547d8f7d7b6f334cc0efa154fd3d021c2783a09ae1ed9a828fb"
+    },
+    {
+      "path": "boost/market-query-column-proof.json",
+      "bytes": 6356,
+      "sha256": "23f5e156c2a906fc0bead322e08d7e30bb1c057a7a1b8f73e15e1492d9381c05"
+    },
+    {
+      "path": "boost/market-query-column-proof.php",
+      "bytes": 5963,
+      "sha256": "4c0cc8907bbb93190c8d30b412689b0dcb5cc177e4a959a6f948852a39c0c985"
+    },
+    {
+      "path": "boost/phpstan-boost.neon",
+      "bytes": 315,
+      "sha256": "817f1715c9d69ddcde20ec3fd7a8916af8f8c13207650f95d85eac374fb2946b"
+    },
+    {
+      "path": "bulk/CommandQueueServiceBaseline.php",
+      "bytes": 113183,
+      "sha256": "35606b6b3f7f1114934c311f3d69c697df0c77ea64015eb95c2f10d217dfa0d0"
+    },
+    {
+      "path": "bulk/bench.php",
+      "bytes": 3113,
+      "sha256": "53e5ec70731a561f192e26be454bf639e94d79932e6e4a28bea3093e25d652c3"
+    },
+    {
+      "path": "bulk/bulk-plan-before-after.json",
+      "bytes": 1615,
+      "sha256": "38b1f2de8146ffeeeeb86101f2e64822bb5c283fcd8fa37ad0f47f9706f300ed"
+    },
+    {
+      "path": "bulk/bulk-regression.xml",
+      "bytes": 2247,
+      "sha256": "263d6aaf42f1cd1ed768d747220269f17265505bc4f0183d4d611020e22074cd"
+    }
+  ]
+}

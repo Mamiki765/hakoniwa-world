@@ -1,0 +1,28 @@
+
+> build
+> vite build --outDir /workspace/perf-audit-20261031/frontend-build --emptyOutDir
+
+vite v8.1.5 building client environment for production...
+[2K
+transforming...✓ 148 modules transformed.
+rendering chunks...
+computing gzip size...
+../../perf-audit-20261031/frontend-build/assets/skb_bg_h1-4CkLZ84n.png                  0.41 kB
+../../perf-audit-20261031/frontend-build/assets/skb_background-YYwQ7eCu.gif             0.56 kB
+../../perf-audit-20261031/frontend-build/assets/atm_mmji-D1r3JpzM.gif                   0.96 kB
+../../perf-audit-20261031/frontend-build/assets/atm_bg_title-BsMBHG6J.gif               1.03 kB
+../../perf-audit-20261031/frontend-build/assets/skb_bg_title-CdCcEWhU.gif               1.32 kB
+../../perf-audit-20261031/frontend-build/manifest.json                                  2.38 kB │ gzip:   0.49 kB
+../../perf-audit-20261031/frontend-build/assets/atm_background-CFPA_Bkh.png            22.53 kB
+../../perf-audit-20261031/frontend-build/assets/underground-placeholder-CvZ_hZ09.jpg  217.45 kB
+../../perf-audit-20261031/frontend-build/assets/app-JALFpzGf.css                       16.16 kB │ gzip:   3.65 kB
+../../perf-audit-20261031/frontend-build/assets/manual-BSpoHFRL.css                    19.37 kB │ gzip:   4.62 kB
+../../perf-audit-20261031/frontend-build/assets/app-BUObCw2V.css                      199.84 kB │ gzip:  36.18 kB
+../../perf-audit-20261031/frontend-build/assets/app-pLKbRYUq.js                       644.27 kB │ gzip: 197.09 kB
+
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.55s

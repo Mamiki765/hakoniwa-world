@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="Tests\IntegrationProbe\CrossFlowIntegrationTest" file="/evidence/CrossFlowIntegrationTest.php" tests="1" assertions="24" errors="0" failures="0" skipped="0" time="3.304075">
+    <testcase name="test_command_turn_and_real_underground_combat_share_one_application_without_state_leaks" file="/evidence/CrossFlowIntegrationTest.php" line="35" class="Tests\IntegrationProbe\CrossFlowIntegrationTest" classname="Tests.IntegrationProbe.CrossFlowIntegrationTest" assertions="24" time="3.304075"/>
+  </testsuite>
+</testsuites>

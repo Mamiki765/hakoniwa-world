@@ -1,0 +1,76 @@
+from pathlib import Path
+import csv,hashlib,json
+
+root=Path('/workspace/perf-integration-20261031/turn')
+base=json.loads((root/'baseline-mature.json').read_text())
+combined=json.loads((root/'combined-mature.json').read_text())
+rows=[]
+for phase,left in base['measurement']['phases'].items():
+    right=combined['measurement']['phases'][phase]
+    rows.append({
+        'phase':phase,
+        'base_wall_ms':left['wall_ms'],'combined_wall_ms':right['wall_ms'],
+        'base_cpu_ms':round(left['cpu_user_ms']+left['cpu_system_ms'],3),
+        'combined_cpu_ms':round(right['cpu_user_ms']+right['cpu_system_ms'],3),
+        'base_queries':left['queries'],'combined_queries':right['queries'],
+        'base_query_time_ms':left['query_time_ms'],'combined_query_time_ms':right['query_time_ms'],
+        'query_types_equal':left['query_types']==right['query_types'],
+        'metrics_equal':left['metrics']==right['metrics'],
+    })
+with (root/'phase-comparison.csv').open('w',newline='') as file:
+    writer=csv.DictWriter(file,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
+
+def turn_audit(report):
+    runs=report['output']['tables']['turn_runs']
+    run=runs[0]
+    return [r for r in report['output']['tables']['audit_events'] if r['metadata'].get('turn_run_id')==run['id']]
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
+def draw_fields(value,path=''):
+    found=[]
+    if isinstance(value,dict):
+        for key,child in value.items():
+            childpath=f'{path}.{key}'
+            if 'draw' in key:
+                found.append([childpath,child])
+            else:
+                found.extend(draw_fields(child,childpath))
+    elif isinstance(value,list):
+        for i,child in enumerate(value): found.extend(draw_fields(child,f'{path}[{i}]'))
+    return found
+
+audit_base=turn_audit(base);audit_combined=turn_audit(combined)
+summary={
+    'base_sha':'2e93ec918774ad64d787aba99fc59a7bc3e54d16',
+    'combined_manifest':'../source-manifest.json',
+    'probe_sha256':hashlib.sha256((root/'TurnIntegrationSnapshotTest.php').read_bytes()).hexdigest(),
+    'input_identical':base['input']['sha256']==combined['input']['sha256'],
+    'input_sha256':base['input']['sha256'],
+    'output_identical':base['output']['sha256']==combined['output']['sha256'],
+    'output_sha256':base['output']['sha256'],
+    'all_table_digests_equal':base['output']['table_digests']==combined['output']['table_digests'],
+    'captured_tables':len(base['output']['tables']),
+    'nonempty_tables':{key:value['rows'] for key,value in base['output']['table_digests'].items() if value['rows']},
+    'all_12_phase_metrics_equal':all(row['metrics_equal'] for row in rows),
+    'all_12_query_type_counts_equal':all(row['query_types_equal'] for row in rows),
+    'master_seed_equal':base['random_seed']==combined['random_seed'],
+    'master_seed':base['random_seed'],
+    'rng_source_hashes_equal':base['rng_source_sha256']==combined['rng_source_sha256'],
+    'rng_source_sha256':base['rng_source_sha256'],
+    'turn_audit_rows':len(audit_base),
+    'turn_audit_identical':audit_base==audit_combined,
+    'turn_audit_sha256':digest(audit_base),
+    'recorded_draw_fields':len(draw_fields(audit_base)),
+    'recorded_draw_fields_equal':draw_fields(audit_base)==draw_fields(audit_combined),
+    'recorded_draw_sha256':digest(draw_fields(audit_base)),
+    'measurements':{},
+    'limitations':['One baseline and one combined reporting run; no statistical regression/speedup claim.','Whole-turn PHP timing includes the same probe and retained input snapshot in both runs; PostgreSQL CPU is separate.','No undersea-city fire path in the mature fixture; T02 is covered by the focused combined tests.','Full random-call trace and repeated whole-turn replay of one code version were not performed.','Source dependencies/PHP8.5.8/PG18.4 are matched; configured production PHP8.5.12 was not measured.'],
+}
+for name,report in [('baseline',base),('combined',combined)]:
+    m=report['measurement'];summary['measurements'][name]={k:v for k,v in m.items() if k!='phases'}
+    summary['measurements'][name]['total_cpu_ms']=round(m['total_cpu_user_ms']+m['total_cpu_system_ms'],3)
+summary['measurement_delta']={key:round(summary['measurements']['combined'][key]-summary['measurements']['baseline'][key],3) for key in ['total_wall_ms','total_queries','total_cpu_ms']}
+(root/'turn-comparison.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2)+'\n')
+print(json.dumps(summary,ensure_ascii=False,indent=2))

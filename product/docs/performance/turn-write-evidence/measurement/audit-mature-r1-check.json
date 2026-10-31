@@ -1,0 +1,26 @@
+{
+  "left": "main-mature-r1",
+  "right": "audit-mature-r1",
+  "checks": {
+    "fixture_recipe_equal": true,
+    "input_identical": true,
+    "output_identical": true,
+    "all_table_digests_equal": true,
+    "all_phase_metrics_equal": true,
+    "phase_order_equal": true,
+    "master_seed_equal": true,
+    "rng_source_hashes_equal": true,
+    "dependency_versions_equal": true,
+    "turn_audit_identical": true,
+    "recorded_draw_fields_equal": true
+  },
+  "passed": true,
+  "captured_tables": 91,
+  "turn_audit_rows": 1131,
+  "recorded_draw_fields": 211,
+  "audit_sha256": "ea84a9baa9bb3d9aa32fd1f5dc997edb678116954f6d235eb282b2c8f25b19cd",
+  "input_sha256": "f6f5c1c1b814d7f499ffab7611ef95e9f6659eb223668d4631c619ab3dd804d8",
+  "output_sha256": "b8a157ed56cec97d309e65ddfab17e9bc89d450b772a7d5d8ae45b83b946405b",
+  "first_input_differences": [],
+  "first_output_differences": []
+}

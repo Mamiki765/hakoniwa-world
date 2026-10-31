@@ -1,0 +1,22 @@
+Run date: 2026-10-31 UTC
+Source: /workspace/hakoniwa-world
+git rev-parse HEAD: 2e93ec918774ad64d787aba99fc59a7bc3e54d16
+git status --short: empty before and after investigation/test
+node --version: v24.19.0
+php -v: /bin/bash: php: command not found
+
+Focused existing frontend test, executed once:
+npx vitest run --project=surface resources/js/components/CommandAndSalePanels.surface.test.ts -t 'defers refresh during a committed add|ignores a successful stale refresh|asks before a bulk insertion overflows|uses the next insertion position' --reporter=verbose
+
+ RUN  v4.1.10 /workspace/hakoniwa-world/product
+ PASS command plan workspace > defers refresh during a committed add and finishes with the authoritative queue 207ms
+ PASS command plan workspace > asks before a bulk insertion overflows, sends the chosen policy with the preview, and deletes from the selected position 69ms
+ PASS command plan workspace > ignores a successful stale refresh 63ms
+
+ Test Files 1 passed (1)
+ Tests 3 passed | 41 skipped (44)
+ Start at 12:23:03
+ Duration 2.42s (transform 867ms, setup 0ms, import 989ms, tests 342ms, environment 865ms)
+ Exit code 0
+
+This is a transcription of the tool result for the executed focused command, not a DB, API, network, or before/after performance benchmark. The fourth filter alternative matched no tests. An isolated PHP8.5.8 runtime was later provided by the parent. The bulkPlan microbenchmark executed once per policy; see evidence/command-bulk-plan-microbench.json. The SQL probe then executed after API DB probe coordination: one PHPUnit test / 9 assertions passed, 2.693s, 69.50MB. Q=1/Q=30 each one GET on one synthetic target; target cell/terrain/facility SELECT each 1→30; total SQL 17→104. JSON and JUnit are stored in evidence/command-serialization-queries.json and evidence/command-serialization-junit.xml. PG query plans and candidate-patch performance comparisons were not run.

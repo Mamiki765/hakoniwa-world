@@ -1,0 +1,39 @@
+{
+  "type": "isolated_current_code_pg_query_count",
+  "source_file_sha256": "7675a4b6b40be8ab3d3b1c45688c30f1bd590b762c06feb1d3c0ea9090b62067",
+  "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "php": "8.5.8",
+  "fixture": {
+    "series": 1,
+    "occurrences": 3,
+    "kind": "hunting_ground"
+  },
+  "projection_elapsed_ms": 4.758927,
+  "series_queries": 1,
+  "all_queries": 3,
+  "queries": [
+    {
+      "sql": "select * from \"auth_identities\" where \"auth_identities\".\"user_id\" = ? and \"auth_identities\".\"user_id\" is not null",
+      "bindings": [
+        1
+      ],
+      "time_ms": 0.43
+    },
+    {
+      "sql": "select * from \"boost_occurrences\" where \"world_id\" = ? order by \"id\" desc limit 500",
+      "bindings": [
+        1
+      ],
+      "time_ms": 0.29
+    },
+    {
+      "sql": "select \"id\", \"title\", \"schedule\" from \"boost_series\" where \"id\" in (?)",
+      "bindings": [
+        1
+      ],
+      "time_ms": 0.31
+    }
+  ],
+  "limits": "One synthetic fixture and one patched-worktree invocation, identified by source SHA-256. Query count evidence only; no latency speedup claim. The raw probe retained its before-template limits text; this annotation corrects that description without changing results.",
+  "raw_evidence_sha256": "5992df42eabb33b027ddc40825cd9bc0368b8dec0e4cf37d61df9ef2267cfc4c"
+}

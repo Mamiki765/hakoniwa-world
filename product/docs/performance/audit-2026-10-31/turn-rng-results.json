@@ -1,0 +1,38 @@
+{
+    "runtime": "8.5.8",
+    "opcache_cli": "0",
+    "exact_comparison_draws": 10000,
+    "measurements": [
+        {
+            "class": "App\\Domain\\Turn\\DeterministicRandomStream",
+            "draws_per_round": 100000,
+            "milliseconds": [
+                42.154422,
+                41.8941,
+                43.658362
+            ],
+            "checksum": 498164151
+        },
+        {
+            "class": "AuditBlockWords",
+            "draws_per_round": 100000,
+            "milliseconds": [
+                20.754457,
+                21.142045,
+                19.894496
+            ],
+            "checksum": 498164151
+        },
+        {
+            "class": "AuditNative",
+            "draws_per_round": 100000,
+            "milliseconds": [
+                9.260753,
+                8.823602,
+                9.001759
+            ],
+            "checksum": 500064600
+        }
+    ],
+    "factory_cached_stream_100000_ms": 19.046004
+}

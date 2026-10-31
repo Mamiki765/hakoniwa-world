@@ -1,0 +1,629 @@
+[
+  {
+    "index": 0,
+    "slot": 1,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/AdminOperationsTest.php",
+          "tests/Feature/FacilityAndMapStateTest.php",
+          "tests/Feature/MonsterFoundationPersistenceTest.php",
+          "tests/Feature/SecretarySynthesisTest.php",
+          "tests/Underground/Feature/UndergroundHistoryAndAiTest.php",
+          "tests/Underground/Unit/UndergroundCombatBuildTest.php",
+          "tests/Unit/ProductionConfigCacheEntrypointTest.php",
+          "tests/Unit/TurnRandomStreamTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 17.916346124000484,
+        "junit": "shard01-standard.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/PostgresRewardMutationConcurrencyTest.php",
+          "tests/Feature/TurnRuntimePerformanceTest.php",
+          "tests/Shared/Feature/InquiryConcurrencyFailureTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 62.13492209099968,
+        "junit": "shard01-individual.xml"
+      }
+    ],
+    "seconds": 80.41318471600061,
+    "passed": true
+  },
+  {
+    "index": 1,
+    "slot": 2,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/AnnouncementApiTest.php",
+          "tests/Feature/FirstProductionReleaseTest.php",
+          "tests/Feature/TurnScheduleStatusTest.php",
+          "tests/Shared/Feature/ProductionDestructiveDatabaseCommandGuardTest.php",
+          "tests/Underground/Feature/UndergroundIntroAndPlaytestTest.php",
+          "tests/Underground/Unit/UndergroundCombatLaboratoryTest.php",
+          "tests/Unit/RegistrationWorldExpansionPlannerTest.php",
+          "tests/Unit/TurnStateTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 12.163836202000311,
+        "junit": "shard02-standard.xml"
+      },
+      {
+        "profile": "reusable_surface",
+        "files": [
+          "tests/Feature/SecretaryTurnIntegrationTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 7.401864637000472,
+        "junit": "shard02-reusable_surface.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/MonsterPerformanceTest.php",
+          "tests/Feature/PostgresSecretaryEquipmentConcurrencyTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 20.830007208000097,
+        "junit": "shard02-individual.xml"
+      }
+    ],
+    "seconds": 40.757874294999056,
+    "passed": true
+  },
+  {
+    "index": 2,
+    "slot": 3,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/ApiAndAssetTest.php",
+          "tests/Feature/GivenNameTest.php",
+          "tests/Feature/MonsterSystemTest.php",
+          "tests/Underground/Feature/UndergroundLendingRewardServiceTest.php",
+          "tests/Underground/Unit/UndergroundExplorationDropTest.php",
+          "tests/Unit/RulesetVersionSettingsTest.php",
+          "tests/Unit/WorldBoundsTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 57.261454608998974,
+        "junit": "shard03-standard.xml"
+      },
+      {
+        "profile": "reusable_surface",
+        "files": [
+          "tests/Feature/PowerEconomyTest.php",
+          "tests/Feature/SurfaceCommandAndAidExecutionTest.php",
+          "tests/Feature/UnderseaConstructionShipTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 68.05898054300087,
+        "junit": "shard03-reusable_surface.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Shared/Feature/RulesetImmutabilityTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 3.31342190399846,
+        "junit": "shard03-individual.xml"
+      }
+    ],
+    "seconds": 129.06927901999916,
+    "passed": true
+  },
+  {
+    "index": 3,
+    "slot": 4,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/HotfixCommandQueueCorruptionTest.php",
+          "tests/Feature/PublicLobbyApiTest.php",
+          "tests/Feature/SurfaceParadoxDailyRewardTest.php",
+          "tests/Feature/UnderseaConstructionShipUpgradeTest.php",
+          "tests/Underground/Feature/UndergroundMadMoonTest.php",
+          "tests/Underground/Unit/UndergroundPartyBattleProjectorTest.php",
+          "tests/Unit/SeaAreaNameResolverTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 17.97742114799985,
+        "junit": "shard04-standard.xml"
+      },
+      {
+        "profile": "reusable_surface",
+        "files": [
+          "tests/Feature/AwardSystemTest.php",
+          "tests/Feature/MutationRateLimitTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 10.985004885000308,
+        "junit": "shard04-reusable_surface.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Shared/Feature/UndergroundSkillRebuildTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 2.401042547000543,
+        "junit": "shard04-individual.xml"
+      }
+    ],
+    "seconds": 31.715485009000986,
+    "passed": true
+  },
+  {
+    "index": 4,
+    "slot": 1,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/BoostScheduleTest.php",
+          "tests/Feature/VisitorCodeTest.php",
+          "tests/Shared/Unit/CurrentRulesetContractTest.php",
+          "tests/Underground/Feature/UndergroundMarketTest.php",
+          "tests/Underground/Unit/UndergroundRuntimeCatalogPartyAuthoringTest.php",
+          "tests/Unit/SeaAreaWeatherLotteryTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 19.178458527998373,
+        "junit": "shard05-standard.xml"
+      },
+      {
+        "profile": "reusable_surface",
+        "files": [
+          "tests/Feature/InquiryApiTest.php",
+          "tests/Feature/NationAbandonmentTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 11.82461235899973,
+        "junit": "shard05-reusable_surface.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/RulesetAdvanceRuntimeTest.php",
+          "tests/Feature/SurfaceShipDestinationTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 32.01867877499899,
+        "junit": "shard05-individual.xml"
+      }
+    ],
+    "seconds": 63.38746217900007,
+    "passed": true
+  },
+  {
+    "index": 5,
+    "slot": 2,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/C4NewMonstersTest.php",
+          "tests/Feature/RulesetValidationCommandTest.php",
+          "tests/Feature/SurfaceShipFoundationTest.php",
+          "tests/Shared/Unit/ParallelTestDatabaseManagerTest.php",
+          "tests/Underground/Feature/UndergroundPersistenceTest.php",
+          "tests/Underground/Unit/UndergroundRuntimeEquipmentGeneratorTest.php",
+          "tests/Unit/SecretaryItemEffectPoliciesTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 30.978639351998936,
+        "junit": "shard06-standard.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/LandSubsidenceTurnTest.php",
+          "tests/Feature/NationAutomaticExpansionTest.php",
+          "tests/Feature/WorldExpansionCommandTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 119.86012277000009,
+        "junit": "shard06-individual.xml"
+      }
+    ],
+    "seconds": 151.24102693500026,
+    "passed": true
+  },
+  {
+    "index": 6,
+    "slot": 3,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/CommandQueueAndSalePolicyTest.php",
+          "tests/Feature/LivingMonsterRulesetUpgradeTest.php",
+          "tests/Feature/NationCapacityTest.php",
+          "tests/Feature/RuntimeMutationQueryCountTest.php",
+          "tests/Feature/TerritoryExpansionAndInfluenceTest.php",
+          "tests/Shared/Unit/RulesetAuthoringValidatorTest.php",
+          "tests/Underground/Feature/UndergroundReceiptRollupTest.php",
+          "tests/Unit/AdditionalTurnPlanTest.php",
+          "tests/Unit/SecretaryItemGameplayContractTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 95.06000113200025,
+        "junit": "shard07-standard.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/WorldExpansionServiceTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 28.121706326001004,
+        "junit": "shard07-individual.xml"
+      }
+    ],
+    "seconds": 123.52981964699939,
+    "passed": true
+  },
+  {
+    "index": 7,
+    "slot": 4,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/CompensationWarehouseTest.php",
+          "tests/Feature/MariaAchievementSyncTest.php",
+          "tests/Shared/Unit/TestShardPlannerTest.php",
+          "tests/Underground/Feature/UndergroundRequestAdmissionTest.php",
+          "tests/Unit/DefaultInquiryAttachmentStackTest.php",
+          "tests/Unit/SecretaryNavyEvasionTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 7.506775930000003,
+        "junit": "shard08-standard.xml"
+      },
+      {
+        "profile": "reusable_surface",
+        "files": [
+          "tests/Feature/NationCreationTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 8.77758695600096,
+        "junit": "shard08-reusable_surface.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/SeaAreaWeatherApiTest.php",
+          "tests/Feature/TerritoryInfluencePerformanceTest.php",
+          "tests/Feature/WorldInitializationTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 19.162182862999543,
+        "junit": "shard08-individual.xml"
+      }
+    ],
+    "seconds": 35.75916863400016,
+    "passed": true
+  },
+  {
+    "index": 8,
+    "slot": 1,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/TileAssetTest.php",
+          "tests/Underground/Feature/BorrowedSecretarySnapshotFactoryTest.php",
+          "tests/Underground/Feature/UndergroundResidenceTest.php",
+          "tests/Unit/DisasterMutableCellIndexTest.php",
+          "tests/Unit/SecretaryProductionBonusTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 5.7906648099997255,
+        "junit": "shard09-standard.xml"
+      },
+      {
+        "profile": "reusable_surface",
+        "files": [
+          "tests/Feature/MessageBoardApiTest.php",
+          "tests/Feature/NationDormancyTest.php",
+          "tests/Feature/WorldMonsterCountSnapshotTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 14.868493920001129,
+        "junit": "shard09-reusable_surface.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/CompleteTurnIntegrationTest.php",
+          "tests/Feature/SeaAreaWeatherTurnTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 18.952761548000126,
+        "junit": "shard09-individual.xml"
+      }
+    ],
+    "seconds": 39.953463230000125,
+    "passed": true
+  },
+  {
+    "index": 9,
+    "slot": 2,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/NationMembershipTurnGuardTest.php",
+          "tests/Feature/SecretaryCollectionTest.php",
+          "tests/Underground/Feature/GuideConversationTest.php",
+          "tests/Underground/Feature/UndergroundRuntimeTest.php",
+          "tests/Unit/EconomyBoundaryTest.php",
+          "tests/Unit/SecretarySkillProgressionTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 18.99801674199989,
+        "junit": "shard10-standard.xml"
+      },
+      {
+        "profile": "reusable_surface",
+        "files": [
+          "tests/Feature/TradingPostApiTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 19.241328273999898,
+        "junit": "shard10-reusable_surface.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/CurrentRulesetRuntimeBoundaryTest.php",
+          "tests/Feature/MessageBoardIntegrityTest.php",
+          "tests/Feature/WorldResetCommandTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 47.28945081500024,
+        "junit": "shard10-individual.xml"
+      }
+    ],
+    "seconds": 85.93374412400044,
+    "passed": true
+  },
+  {
+    "index": 10,
+    "slot": 3,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/NationProfileTest.php",
+          "tests/Feature/SecretaryEquipmentReadConcurrencyTest.php",
+          "tests/Feature/TurnCellAuditBatchTest.php",
+          "tests/Underground/Feature/HuntingGroundBoostTest.php",
+          "tests/Underground/Feature/UndergroundSkipSettlementTest.php",
+          "tests/Unit/EcopoRulesTest.php",
+          "tests/Unit/SecretaryTurnStateTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 8.832386702000804,
+        "junit": "shard11-standard.xml"
+      },
+      {
+        "profile": "reusable_surface",
+        "files": [
+          "tests/Feature/MessageBoardSecretTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 5.130235161999735,
+        "junit": "shard11-reusable_surface.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/DeferredMapCellWriterTest.php",
+          "tests/Feature/WorldResetTurnLockTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 7.690861393999512,
+        "junit": "shard11-individual.xml"
+      }
+    ],
+    "seconds": 21.964431283999147,
+    "passed": true
+  },
+  {
+    "index": 11,
+    "slot": 4,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/SecretaryEquipmentTest.php",
+          "tests/Shared/Feature/ApplicationDatabaseTimezoneTest.php",
+          "tests/Underground/Feature/MerchantConversationTest.php",
+          "tests/Underground/Unit/AlphaV1PartyCombatTest.php",
+          "tests/Unit/HakoniwaCalendarTest.php",
+          "tests/Unit/SettlementOverbuildPolicyTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 6.3266241470009845,
+        "junit": "shard12-standard.xml"
+      },
+      {
+        "profile": "reusable_surface",
+        "files": [
+          "tests/Feature/MissileDefenseTest.php",
+          "tests/Feature/OceanLoopTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 19.24119005799912,
+        "junit": "shard12-reusable_surface.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/DisasterAndOilTurnTest.php",
+          "tests/Feature/TurnCellProcessingTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 100.05058531900067,
+        "junit": "shard12-individual.xml"
+      }
+    ],
+    "seconds": 125.9582463480001,
+    "passed": true
+  },
+  {
+    "index": 12,
+    "slot": 1,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/SecretaryInventoryTest.php",
+          "tests/Underground/Unit/BahamulCombatTest.php",
+          "tests/Unit/HugeMeteorWeatherDistributionTest.php",
+          "tests/Unit/StaggeredGridCoordinateTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 9.843485089000751,
+        "junit": "shard13-standard.xml"
+      },
+      {
+        "profile": "reusable_surface",
+        "files": [
+          "tests/Feature/DomesticCommandExecutionTest.php",
+          "tests/Feature/MissileImpactAndSettlementTest.php",
+          "tests/Feature/OilDiscoveryExperienceBackfillTest.php",
+          "tests/Feature/TurnEconomyTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 105.08880150000005,
+        "junit": "shard13-reusable_surface.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Shared/Feature/AuthIdentityConcurrencyTest.php",
+          "tests/Underground/Feature/PostgresUndergroundRuntimeConcurrencyTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 24.802834624999377,
+        "junit": "shard13-individual.xml"
+      }
+    ],
+    "seconds": 140.11012265300087,
+    "passed": true
+  },
+  {
+    "index": 13,
+    "slot": 2,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/PlayerIslandEventApiTest.php",
+          "tests/Feature/SecretaryItemEffectsTest.php",
+          "tests/Feature/TurnOrderServiceTest.php",
+          "tests/Shared/Feature/AuthIdentityTest.php",
+          "tests/Underground/Feature/SecretaryLendingCandidatesTest.php",
+          "tests/Underground/Unit/PriorityCombatAiConfigurationTest.php",
+          "tests/Unit/MapSpaceCoverageValidatorTest.php",
+          "tests/Unit/TerritoryExpansionPolicyTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 52.02370312899984,
+        "junit": "shard14-standard.xml"
+      },
+      {
+        "profile": "reusable_surface",
+        "files": [
+          "tests/Feature/EcopoSettlementTest.php",
+          "tests/Feature/MissileKarmaAndRecoveryTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 19.063675204999527,
+        "junit": "shard14-reusable_surface.xml"
+      }
+    ],
+    "seconds": 71.39856264800073,
+    "passed": true
+  },
+  {
+    "index": 14,
+    "slot": 3,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/EcopoUpgradeTest.php",
+          "tests/Feature/MonsterApiAssetTest.php",
+          "tests/Feature/SecretaryItemPresentationTest.php",
+          "tests/Feature/TurnRunnerTest.php",
+          "tests/Underground/Feature/UndergroundAccessAndProjectionTest.php",
+          "tests/Underground/Unit/UndergroundBalanceSimulatorTest.php",
+          "tests/Unit/MonsterFoundationContractTest.php",
+          "tests/Unit/TerritoryInfluencePolicyTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 21.59204482500172,
+        "junit": "shard15-standard.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/PostgresCommandQueueAbandonmentLockTest.php",
+          "tests/Shared/Feature/DatabaseBaselineAdoptionTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 8.223460958999567,
+        "junit": "shard15-individual.xml"
+      }
+    ],
+    "seconds": 30.0918119020007,
+    "passed": true
+  },
+  {
+    "index": 15,
+    "slot": 4,
+    "profiles": [
+      {
+        "profile": "standard",
+        "files": [
+          "tests/Feature/EnergySavingExperienceUpgradeTest.php",
+          "tests/Feature/MonsterDispatchTurnTest.php",
+          "tests/Feature/SecretaryPersistenceTest.php",
+          "tests/Underground/Feature/UndergroundEquipmentAndRuntimeTest.php",
+          "tests/Underground/Unit/UndergroundBattleStatisticsProjectorTest.php",
+          "tests/Unit/PowerEconomyCalculatorTest.php",
+          "tests/Unit/TurnCronNoOpTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 32.77079726899865,
+        "junit": "shard16-standard.xml"
+      },
+      {
+        "profile": "individual",
+        "files": [
+          "tests/Feature/PostgresRegistrationLockTest.php",
+          "tests/Feature/TurnRunnerTransientRetryTest.php",
+          "tests/Shared/Feature/FreshInstallRebaselineTest.php"
+        ],
+        "exit_code": 0,
+        "seconds": 22.822697776000496,
+        "junit": "shard16-individual.xml"
+      }
+    ],
+    "seconds": 55.94613265099906,
+    "passed": true
+  }
+]

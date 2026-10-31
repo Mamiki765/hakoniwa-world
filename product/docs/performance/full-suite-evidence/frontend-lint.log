@@ -1,0 +1,16 @@
+
+> lint
+> eslint resources/js
+
+
+/workspace/perf-full-combined-20261031/frontend/resources/js/components/UndergroundBattleLog.vue
+  196:74  warning  'v-html' directive can lead to XSS attack  vue/no-v-html
+  197:74  warning  'v-html' directive can lead to XSS attack  vue/no-v-html
+  394:53  warning  'v-html' directive can lead to XSS attack  vue/no-v-html
+
+/workspace/perf-full-combined-20261031/frontend/resources/js/components/UndergroundPanel.vue
+  1923:82   warning  'v-html' directive can lead to XSS attack  vue/no-v-html
+  2012:131  warning  'v-html' directive can lead to XSS attack  vue/no-v-html
+  2397:103  warning  'v-html' directive can lead to XSS attack  vue/no-v-html
+
+✖ 6 problems (0 errors, 6 warnings)

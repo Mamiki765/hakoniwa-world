@@ -1,0 +1,261 @@
+{
+    "kind": "current_code_isolated_pg_query_count",
+    "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "php": "8.5.8",
+    "candidate_branch": "codex\/perf-command-response-20261031",
+    "changed_source_sha256": {
+        "controller": "28cc3f73bdb8a7e186f82d257ec3aa6476c1bd4025c15ac21373b568206dcce7",
+        "quantity_semantics": "8f6e1875f5c5408af46247eeaf03583045d9f9bf6fcbe9f7a150ef275cedf11f"
+    },
+    "fixture": "Debug32x32 synthetic World, one synthetic owner Nation; finance plans target the same capital facility",
+    "measurements": [
+        {
+            "queue_items": 1,
+            "distinct_fixed_targets": 1,
+            "elapsed_ms": 44.26007,
+            "all_select_and_write_queries": 17,
+            "target_cell_queries": 1,
+            "terrain_queries": 1,
+            "facility_queries": 1,
+            "queries": [
+                {
+                    "sql": "select * from \"nations\" where \"id\" = ? limit 1",
+                    "bindings": [
+                        "1"
+                    ],
+                    "time_ms": 0.42
+                },
+                {
+                    "sql": "select * from \"map_spaces\" where \"id\" = ? limit 1",
+                    "bindings": [
+                        "1"
+                    ],
+                    "time_ms": 0.22
+                },
+                {
+                    "sql": "select * from \"nation_memberships\" where \"user_id\" = ? and \"nation_id\" = ? and \"world_id\" = ? and \"role\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        1,
+                        1,
+                        "owner"
+                    ],
+                    "time_ms": 0.32
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.49
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 0.98
+                },
+                {
+                    "sql": "select * from \"nation_command_queues\" where \"nation_id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.25
+                },
+                {
+                    "sql": "select * from \"nation_command_queue_items\" where \"nation_command_queue_items\".\"nation_command_queue_id\" in (1) and \"status\" = ? order by \"queue_position\" asc",
+                    "bindings": [
+                        "queued"
+                    ],
+                    "time_ms": 0.37
+                },
+                {
+                    "sql": "select * from \"command_definitions\" where \"command_definitions\".\"id\" in (21)",
+                    "bindings": [],
+                    "time_ms": 0.23
+                },
+                {
+                    "sql": "select * from \"nations\" where \"nations\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.28
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 0.21
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 0.93
+                },
+                {
+                    "sql": "select * from \"map_spaces\" where \"map_spaces\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.29
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and ((\"x\" = ? and \"y\" = ?))",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.57
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.24
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.24
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.24
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 1.05
+                }
+            ]
+        },
+        {
+            "queue_items": 30,
+            "distinct_fixed_targets": 1,
+            "elapsed_ms": 78.252683,
+            "all_select_and_write_queries": 17,
+            "target_cell_queries": 1,
+            "terrain_queries": 1,
+            "facility_queries": 1,
+            "queries": [
+                {
+                    "sql": "select * from \"nations\" where \"id\" = ? limit 1",
+                    "bindings": [
+                        "1"
+                    ],
+                    "time_ms": 0.72
+                },
+                {
+                    "sql": "select * from \"map_spaces\" where \"id\" = ? limit 1",
+                    "bindings": [
+                        "1"
+                    ],
+                    "time_ms": 0.3
+                },
+                {
+                    "sql": "select * from \"nation_memberships\" where \"user_id\" = ? and \"nation_id\" = ? and \"world_id\" = ? and \"role\" = ? limit 1",
+                    "bindings": [
+                        1,
+                        1,
+                        1,
+                        "owner"
+                    ],
+                    "time_ms": 0.25
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.29
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 1.09
+                },
+                {
+                    "sql": "select * from \"nation_command_queues\" where \"nation_id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.42
+                },
+                {
+                    "sql": "select * from \"nation_command_queue_items\" where \"nation_command_queue_items\".\"nation_command_queue_id\" in (1) and \"status\" = ? order by \"queue_position\" asc",
+                    "bindings": [
+                        "queued"
+                    ],
+                    "time_ms": 0.4
+                },
+                {
+                    "sql": "select * from \"command_definitions\" where \"command_definitions\".\"id\" in (21)",
+                    "bindings": [],
+                    "time_ms": 0.25
+                },
+                {
+                    "sql": "select * from \"nations\" where \"nations\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.32
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 0.46
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" in (1)",
+                    "bindings": [],
+                    "time_ms": 0.91
+                },
+                {
+                    "sql": "select * from \"map_spaces\" where \"map_spaces\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.26
+                },
+                {
+                    "sql": "select * from \"map_cells\" where \"map_space_id\" = ? and ((\"x\" = ? and \"y\" = ?))",
+                    "bindings": [
+                        1,
+                        5,
+                        5
+                    ],
+                    "time_ms": 0.65
+                },
+                {
+                    "sql": "select * from \"terrain_definitions\" where \"terrain_definitions\".\"id\" in (5)",
+                    "bindings": [],
+                    "time_ms": 0.39
+                },
+                {
+                    "sql": "select * from \"facility_definitions\" where \"facility_definitions\".\"id\" in (2)",
+                    "bindings": [],
+                    "time_ms": 0.3
+                },
+                {
+                    "sql": "select * from \"worlds\" where \"worlds\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 0.42
+                },
+                {
+                    "sql": "select * from \"ruleset_versions\" where \"ruleset_versions\".\"id\" = ? limit 1",
+                    "bindings": [
+                        1
+                    ],
+                    "time_ms": 1.13
+                }
+            ]
+        }
+    ],
+    "limits": "One candidate-code request per Q=1\/Q=30 in one synthetic fixture. Compare SQL counts with the separately archived fixed-base measurement; no repeated latency benchmark or production speedup claim.",
+    "original_probe_limit_note": "One test case, one request per Q=1\/Q=30. Current code only; elapsed includes route\/Laravel cold differences. No candidate patch or latency-speedup claim."
+}

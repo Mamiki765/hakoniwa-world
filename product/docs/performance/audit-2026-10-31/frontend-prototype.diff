@@ -1,0 +1,19 @@
+--- App.vue (fixed SHA)
++++ App.vue (isolated experiment)
+@@ -1,6 +1,6 @@
+ <script setup lang="ts">
+ import stories from '../stories/intro.json';
+-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
++import { defineAsyncComponent, computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+ import { ApiError, api, apiEnvelope, validationErrors } from './api/client';
+ import { isCompensationOnly, useBoosts } from './boosts';
+ import AnnouncementBody from './components/AnnouncementBody.vue';
+@@ -21,7 +21,7 @@
+ import ShipStatusWindow from './components/ShipStatusWindow.vue';
+ import SecretaryEquipmentModal from './components/SecretaryEquipmentModal.vue';
+ import TradingPostPanel from './components/TradingPostPanel.vue';
+-import UndergroundPanel from './components/UndergroundPanel.vue';
++const UndergroundPanel = defineAsyncComponent(() => import('./components/UndergroundPanel.vue'));
+ import type { MarketAttention } from './components/UndergroundMarket.vue';
+ import SecretaryImageSlotsEditor from './components/SecretaryImageSlotsEditor.vue';
+ import SecretaryMenu from './components/SecretaryMenu.vue';

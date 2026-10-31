@@ -1,0 +1,111 @@
+{
+  "combined_tree": "99585a57f9d48007a5581ddf6ae1b42554841c9e",
+  "files_checked": 26,
+  "all_source_hashes_match": true,
+  "checks": [
+    {
+      "path": "product/app/Application/BoostScheduleService.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/app/Application/CommandQuantitySemantics.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/app/Application/CommandQueueService.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/app/Application/DisasterMutableCellIndex.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/app/Application/DisasterTurnService.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/app/Application/Underground/UndergroundAlphaV1PlayerCatalog.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/app/Domain/Secretary/SecretaryItemCatalog.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/CommandQueueController.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/app/Providers/AppServiceProvider.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/docs/performance/boost-series-projection.md",
+      "same_sha256": true
+    },
+    {
+      "path": "product/docs/performance/bulk-command-planning.md",
+      "same_sha256": true
+    },
+    {
+      "path": "product/docs/performance/command-response-batching-2026-10-31.md",
+      "same_sha256": true
+    },
+    {
+      "path": "product/docs/performance/evidence/bulk-plan-before-after.json",
+      "same_sha256": true
+    },
+    {
+      "path": "product/docs/performance/secretary-item-catalog-2026-10-31.md",
+      "same_sha256": true
+    },
+    {
+      "path": "product/docs/performance/underground-ai-selection-candidate.md",
+      "same_sha256": true
+    },
+    {
+      "path": "product/docs/performance/underground-catalog-reuse.md",
+      "same_sha256": true
+    },
+    {
+      "path": "product/docs/performance/underground-combat-followups.md",
+      "same_sha256": true
+    },
+    {
+      "path": "product/docs/performance/underground-equipment-projection-candidate.md",
+      "same_sha256": true
+    },
+    {
+      "path": "product/docs/performance/underground-lending-select-candidate.md",
+      "same_sha256": true
+    },
+    {
+      "path": "product/docs/performance/undersea-fire-station-neighbors.md",
+      "same_sha256": true
+    },
+    {
+      "path": "product/tests/Feature/BoostScheduleTest.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/tests/Feature/CommandQueueAndSalePolicyTest.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/tests/Feature/DisasterAndOilTurnTest.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/tests/Underground/Unit/UndergroundRuntimeCatalogPartyAuthoringTest.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/tests/Unit/DisasterMutableCellIndexTest.php",
+      "same_sha256": true
+    },
+    {
+      "path": "product/tests/Unit/SecretaryItemGameplayContractTest.php",
+      "same_sha256": true
+    }
+  ]
+}

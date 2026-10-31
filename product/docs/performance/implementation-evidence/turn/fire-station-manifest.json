@@ -1,0 +1,24 @@
+{
+  "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "branch": "codex/perf-fire-station-neighbors-20261031",
+  "source_sha256": {
+    "product/app/Application/DisasterMutableCellIndex.php": "4e8a705e6b3160f2edd66cb427d7d8133ff9de884467446536a1bf1035b522c6",
+    "product/app/Application/DisasterTurnService.php": "4b8500c186614143bec9c49936067ac97409da72684a5cbe21d38655ac6fe72c",
+    "product/tests/Unit/DisasterMutableCellIndexTest.php": "14b1e74eeec079fea92719c2e83efa36e0333322016d063fee6f1d9126a93e54",
+    "product/tests/Feature/DisasterAndOilTurnTest.php": "ae08b9929e1287bdfd8b60290ffc7943724d86d97ead29c1274a3760e2fbd418",
+    "product/docs/performance/undersea-fire-station-neighbors.md": "a74e6cd11f3a573d8c2fe15728e9984fe582d9fad0e0dff87384c6794f58aec1"
+  },
+  "focused": "9 tests / 62 assertions passed",
+  "baseline_sequential_fire": "1 test / 12 assertions passed",
+  "phpstan": "project-equivalent Larastan level 6, 2 runtime files, passed",
+  "pr344_head": "ded9dc3edd50108aaa3ea9684c2522b973d1759d",
+  "pr344_patch_application_check": "service and feature patches passed; not applied",
+  "limitations": [
+    "PHP 8.5.8 vs configured 8.5.12",
+    "CPU probe only, not whole-turn timing",
+    "No combined-runtime execution with PR344",
+    "No production, OCI or credentials accessed"
+  ],
+  "candidate_sha": "69a5a038a21b7b2219d9ae87f125e8e0cb6c564e",
+  "worktree_clean": true
+}

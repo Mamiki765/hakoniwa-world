@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="Tests\CellAuditRetryProbe\TurnCellAuditRetryProbeTest" file="/evidence/retry-probe/TurnCellAuditRetryProbeTest.php" tests="1" assertions="29" errors="0" failures="0" skipped="0" time="8.500680">
+    <testcase name="test_canonical_mature_turn_replays_after_a_real_serialization_failure" file="/evidence/retry-probe/TurnCellAuditRetryProbeTest.php" line="95" class="Tests\CellAuditRetryProbe\TurnCellAuditRetryProbeTest" classname="Tests.CellAuditRetryProbe.TurnCellAuditRetryProbeTest" assertions="29" time="8.500680"/>
+  </testsuite>
+</testsuites>

@@ -1,0 +1,13 @@
+phase,base_wall_ms,combined_wall_ms,base_cpu_ms,combined_cpu_ms,base_queries,combined_queries,base_query_time_ms,combined_query_time_ms,query_types_equal,metrics_equal
+prepare_turn,15.91,15.715,9.75,7.762,17,17,7.39,9.58,True,True
+calculate_terrain_context,56.175,65.393,53.21,61.31,2,2,3.69,5.02,True,True
+resolve_territory_influence,261.505,247.112,247.604,233.218,7,7,21.45,22.74,True,True
+nation_economy,105.967,110.61,94.117,98.193,24,24,16.47,17.34,True,True
+resource_sales,11.72,8.844,7.075,4.409,8,8,5.21,5.19,True,True
+development_commands,13.324,11.387,7.369,5.16,14,14,7.36,7.23,True,True
+process_cells,2815.304,2933.883,1709.593,1837.407,3143,3143,1392.55,1404.19,True,True
+settle_deferred_effects,0.811,1.014,0.577,0.651,1,1,0.35,0.48,True,True
+global_disasters,141.926,146.681,93.292,96.358,27,27,56.42,60.11,True,True
+aggregate_nations,83.918,82.577,72.719,71.719,21,21,16.64,15.99,True,True
+enforce_capacities,14.917,15.896,7.144,6.704,14,14,9.11,10.68,True,True
+finalize_turn,71.533,64.029,26.283,31.061,63,63,50.75,39.69,True,True

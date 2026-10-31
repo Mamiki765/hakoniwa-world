@@ -1,0 +1,89 @@
+{
+  "containers": [
+    {
+      "name": "perf-write-php-base-20261031",
+      "id": "608403d5899f5d47647a3d48b8793e97470014b4cfd1f8dc25cbb395f63e7728",
+      "image": "hakoniwa-world-hakoniwa-dev:latest",
+      "no_host_ports": true
+    },
+    {
+      "name": "perf-write-pg-base-20261031",
+      "id": "7b3f3cdf5c4db8c5087c338cc1260595839411e2232d58b8cd3229743e789ec9",
+      "image": "postgres:18.4-bookworm",
+      "no_host_ports": true
+    },
+    {
+      "name": "perf-write-php-340-20261031",
+      "id": "1a9b8f3d25a74021e71d13bb0f30e61c1fcde4bc40801443348848e1b34f20f0",
+      "image": "hakoniwa-world-hakoniwa-dev:latest",
+      "no_host_ports": true
+    },
+    {
+      "name": "perf-write-pg-340-20261031",
+      "id": "266ad1416c98706d10f40ee9f2c00c56ae29d7d7a44ea434d6d937a06faf57ba",
+      "image": "postgres:18.4-bookworm",
+      "no_host_ports": true
+    },
+    {
+      "name": "perf-write-php-audit-20261031",
+      "id": "57493b41c692d9049f3c3219077d895766fa3403b61bd8d3bfbc15ffe2164c6d",
+      "image": "hakoniwa-world-hakoniwa-dev:latest",
+      "no_host_ports": true
+    },
+    {
+      "name": "perf-write-pg-audit-20261031",
+      "id": "871f699dded07220953bac86e221da7482faf0fd16a855e594ba38f7acb3b444",
+      "image": "postgres:18.4-bookworm",
+      "no_host_ports": true
+    },
+    {
+      "name": "perf-write-php-battle-20261031",
+      "id": "bb7c22a6e974b07b5795c45a28f99cd0001d408db3cd37eb67a7fdb0251a37f9",
+      "image": "hakoniwa-world-hakoniwa-dev:latest",
+      "no_host_ports": true
+    },
+    {
+      "name": "perf-write-pg-battle-20261031",
+      "id": "1e774888b2a6ac8436632c87b8afc5f92c8971fcfa80d3f819f7cc896cfd177f",
+      "image": "postgres:18.4-bookworm",
+      "no_host_ports": true
+    },
+    {
+      "name": "perf-write-php-combined-20261031",
+      "id": "52cf0652f850b5e68c30fe890b15b678b6d3f2b4e03b6576f0c3d2cca82ee4db",
+      "image": "hakoniwa-world-hakoniwa-dev:latest",
+      "no_host_ports": true
+    },
+    {
+      "name": "perf-write-pg-combined-20261031",
+      "id": "af50b6f18d84c4daf720d6874a25661f3720dc3b5545088d4c4fe60842bf3504",
+      "image": "postgres:18.4-bookworm",
+      "no_host_ports": true
+    }
+  ],
+  "networks": [
+    "perf-write-base-20261031",
+    "perf-write-340-20261031",
+    "perf-write-audit-20261031",
+    "perf-write-battle-20261031",
+    "perf-write-combined-20261031"
+  ],
+  "worktrees": [
+    {
+      "path": "/workspace/hakoniwa-perf-write-base",
+      "index_tree": "0b00b43ab34cbea3d6de4e89efffa7b6781c4062",
+      "change_lines": 0
+    },
+    {
+      "path": "/workspace/hakoniwa-perf-write-340",
+      "index_tree": "0b00b43ab34cbea3d6de4e89efffa7b6781c4062",
+      "change_lines": 4
+    },
+    {
+      "path": "/workspace/hakoniwa-perf-write-combined",
+      "index_tree": "be836fa0bcdc4f8344439b6edca3254eec0ff68a",
+      "change_lines": 33
+    }
+  ],
+  "result": "Removed exact 10 synthetic containers, 5 internal networks and 3 disposable worktrees; raw evidence and PR worktrees retained."
+}

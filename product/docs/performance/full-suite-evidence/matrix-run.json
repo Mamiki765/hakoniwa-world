@@ -1,0 +1,9 @@
+{
+  "started_at": "2026-10-31T15:50:20.399273+00:00",
+  "plan_shards": 16,
+  "simultaneous_slots": 4,
+  "recipe": ".github/workflows/quality.yml phpunit job, plan-profiles and three fixture processes, no filter; added JUnit output only",
+  "status": "completed",
+  "seconds": 350.12939334099974,
+  "passed": true
+}

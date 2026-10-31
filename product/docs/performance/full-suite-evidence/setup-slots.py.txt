@@ -1,0 +1,31 @@
+from pathlib import Path
+import subprocess, shutil, json
+
+root=Path('/workspace/perf-full-combined-20261031')
+docker=['env','-u','DOCKER_HOST','-u','DOCKER_CONTEXT','-u','DOCKER_TLS','-u','DOCKER_TLS_VERIFY','-u','DOCKER_CERT_PATH','docker','--host=unix:///var/run/docker.sock']
+def run(*args):
+    return subprocess.run(docker+list(args),check=True,text=True,capture_output=True).stdout.strip()
+owned=json.loads((root/'owned-resources.json').read_text())
+for label in ['slot1','slot2','slot3','slot4']:
+    source=Path('/workspace/hakoniwa-perf-final-combined/product')
+    runtime=root/(label+'-runtime');runtime.mkdir()
+    for name in ['artisan','composer.json','composer.lock','package.json','package-lock.json','phpunit.xml','phpstan.neon']:
+        shutil.copy2(source/name,runtime/name)
+    (runtime/'bootstrap/cache').mkdir(parents=True)
+    for name in ['app.php','providers.php']:shutil.copy2(source/'bootstrap'/name,runtime/'bootstrap'/name)
+    for name in ['app/public','framework/cache/data','framework/sessions','framework/views','framework/testing','logs']:
+        (runtime/'storage'/name).mkdir(parents=True,exist_ok=True)
+    shutil.copytree(root/'frontend/public',runtime/'public')
+    shutil.copytree(source/'docker',runtime/'docker')
+    shutil.copy2(source/'Dockerfile',runtime/'Dockerfile')
+    network='perf-full-'+label+'-20261031';pg='perf-full-pg-'+label+'-20261031';php='perf-full-php-'+label+'-20261031'
+    run('network','create','--internal',network)
+    run('run','-d','--name',pg,'--network',network,'--network-alias','hakoniwa-postgres','--tmpfs','/var/lib/postgresql:rw','-e','POSTGRES_DB=hakoniwa_test','-e','POSTGRES_USER=hakoniwa','-e','POSTGRES_PASSWORD=full-suite-test-only','postgres:18.4-bookworm')
+    args=['run','-d','--name',php,'--network',network,'--entrypoint','tail','-w','/var/www/html','-e','APP_ENV=testing','-e','APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=','-e','DB_CONNECTION=pgsql','-e','DB_HOST=hakoniwa-postgres','-e','DB_DATABASE=hakoniwa_test','-e','DB_USERNAME=hakoniwa','-e','DB_PASSWORD=full-suite-test-only','-e','CACHE_STORE=array','-e','SESSION_DRIVER=array','-e','QUEUE_CONNECTION=sync','-v',str(runtime)+':/var/www/html','-v','/workspace/perf-audit-20261031/runtime/vendor:/var/www/html/vendor:ro','-v',str(root)+':/evidence']
+    for name in ['app','config','database','routes','tests','resources','docs']:args+=['-v',str(source/name)+':/var/www/html/'+name+':ro']
+    args+=['hakoniwa-world-hakoniwa-dev:latest','-f','/dev/null']
+    run(*args)
+    for name in ['compose.yml','compose.development.yml']:run('cp',str(source.parent/name),php+':/var/www/'+name)
+    owned.append({'label':label,'php':php,'pg':pg,'network':network})
+    print('ready',label,flush=True)
+(root/'owned-resources.json').write_text(json.dumps(owned,indent=2)+'\n')

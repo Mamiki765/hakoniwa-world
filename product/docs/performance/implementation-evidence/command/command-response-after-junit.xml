@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="Tests\Feature\CommandQueueAndSalePolicyTest" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" tests="3" assertions="50" errors="0" failures="0" skipped="0" time="4.415089">
+    <testcase name="test_v6_hidden_overbuild_preview_and_monument_target_contract_follow_projected_queue_state" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" line="482" class="Tests\Feature\CommandQueueAndSalePolicyTest" classname="Tests.Feature.CommandQueueAndSalePolicyTest" assertions="28" time="2.880109"/>
+    <testcase name="test_queue_read_validates_ruleset_without_locking_the_shared_world" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" line="973" class="Tests\Feature\CommandQueueAndSalePolicyTest" classname="Tests.Feature.CommandQueueAndSalePolicyTest" assertions="4" time="0.723782"/>
+    <testcase name="test_definition_catalog_projects_thirty_item_queue_once_and_batches_facility_definitions" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" line="999" class="Tests\Feature\CommandQueueAndSalePolicyTest" classname="Tests.Feature.CommandQueueAndSalePolicyTest" assertions="18" time="0.811198"/>
+  </testsuite>
+</testsuites>

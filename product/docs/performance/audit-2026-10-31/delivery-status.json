@@ -1,0 +1,16 @@
+{
+  "requested_files": [
+    "README.md",
+    "hakoniwa-performance-audit-20261031.zip"
+  ],
+  "library_saved": false,
+  "confirmed_library_file_ids": [],
+  "stage": "hosted apps tools/list, before prepare/finalize result",
+  "error": "library upload failed: hosted apps tools/list request failed: network",
+  "failure_type": "network; not an automatic approval denial",
+  "executed": "current Library skill and prepared-uploads workflow read; three current companion helpers fetched unchanged; ordered batch helper invoked once",
+  "outcome": "No upload preparation/finalization result or Library ID received; saving not reported successful",
+  "pending": "restore reachability for the supported Library helper and then perform the authorized save; no direct-write bypass or automatic retry attempted",
+  "sharing_or_publication": false,
+  "product_mutations": false
+}

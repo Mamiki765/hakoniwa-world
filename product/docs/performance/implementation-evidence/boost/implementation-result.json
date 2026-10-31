@@ -1,0 +1,55 @@
+{
+  "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "head_sha": "60d65c66f5ee0b6798bc68351201aa233b04a3f8",
+  "branch": "codex/perf-boost-series-projection-20261031",
+  "worktree": "/workspace/hakoniwa-perf-boost",
+  "clean": true,
+  "source_sha256": "7675a4b6b40be8ab3d3b1c45688c30f1bd590b762c06feb1d3c0ea9090b62067",
+  "checks": [
+    {
+      "name": "focused BoostScheduleTest representatives",
+      "result": "pass",
+      "tests": 2,
+      "assertions": 61
+    },
+    {
+      "name": "same-fixture after SQL probe",
+      "result": "pass",
+      "tests": 1,
+      "assertions": 4
+    },
+    {
+      "name": "Pint --test (2 changed PHP files)",
+      "result": "pass"
+    },
+    {
+      "name": "PHPStan/Larastan canonical config, level 6, service only, 1GB",
+      "result": "pass"
+    },
+    {
+      "name": "git diff --check",
+      "result": "pass"
+    }
+  ],
+  "query_counts": {
+    "before": {
+      "series": 4,
+      "occurrences": 2,
+      "total": 7
+    },
+    "after": {
+      "series": 1,
+      "occurrences": 1,
+      "total": 3
+    }
+  },
+  "market_proof": "9 synthetic TEMP cases equal for IDs/order/has_more; no migration or runtime implementation",
+  "not_run": [
+    "production",
+    "PHP8.5.12",
+    "full suite",
+    "CI",
+    "load benchmark"
+  ],
+  "push_pr": "parent responsibility"
+}

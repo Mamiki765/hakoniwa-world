@@ -1,0 +1,29 @@
+{
+  "containers": [
+    "perf-full-php-combined-20261031",
+    "perf-full-pg-combined-20261031",
+    "perf-full-php-base-20261031",
+    "perf-full-pg-base-20261031",
+    "perf-full-php-slot1-20261031",
+    "perf-full-pg-slot1-20261031",
+    "perf-full-php-slot2-20261031",
+    "perf-full-pg-slot2-20261031",
+    "perf-full-php-slot3-20261031",
+    "perf-full-pg-slot3-20261031",
+    "perf-full-php-slot4-20261031",
+    "perf-full-pg-slot4-20261031"
+  ],
+  "networks": [
+    "perf-full-combined-20261031",
+    "perf-full-base-20261031",
+    "perf-full-slot1-20261031",
+    "perf-full-slot2-20261031",
+    "perf-full-slot3-20261031",
+    "perf-full-slot4-20261031"
+  ],
+  "removed_disposable_worktrees": [
+    "hakoniwa-perf-final-base",
+    "hakoniwa-perf-final-combined"
+  ],
+  "result": "Owned 12 synthetic containers / 6 internal networks / 2 disposable worktrees removed; source patches, evidence and PR worktrees retained."
+}

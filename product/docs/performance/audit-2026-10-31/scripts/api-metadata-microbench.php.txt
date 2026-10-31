@@ -1,0 +1,39 @@
+<?php
+declare(strict_types=1);
+// Isolated CPU experiment. No Laravel bootstrap, database, network, or production data.
+// Calls the exact private decoder from the pinned product class through Reflection.
+require '/source/product/app/Application/PlayerIslandEventService.php';
+$service = new App\Application\PlayerIslandEventService();
+$decode = new ReflectionMethod($service, 'metadata');
+$payload = ['host_nation_id' => 2, 'host_nation_name' => 'Fixture island', 'monster_key' => 'fixture',
+    'damage' => 10, 'note' => str_repeat('計測用ダミー', 32),
+    'impacts' => array_fill(0, 8, ['x' => 1, 'y' => 2, 'effect' => 'fixture', 'amount' => 10])];
+$json = json_encode($payload, JSON_THROW_ON_ERROR);
+$count = 1000;
+$run = static function (bool $once) use ($service, $decode, $json, $count): array {
+    $start = hrtime(true); $calls = 0; $sum = 0;
+    for ($i = 0; $i < $count; $i++) {
+        // Both modes call the existing decoder three times, matching a public monster event
+        // in destination lookup, destination filter, and final projection. The candidate
+        // replaces the immutable fetched row's raw string by its one decoded array.
+        $value = $once ? $decode->invoke($service, $json) : $json;
+        if ($once) { $calls++; }
+        for ($stage = 0; $stage < 3; $stage++) {
+            $metadata = $decode->invoke($service, $value);
+            if (! $once) { $calls++; }
+            $sum += $metadata['host_nation_id'];
+        }
+    }
+    return ['elapsed_ms' => (hrtime(true) - $start) / 1e6, 'json_decodes' => $calls, 'checksum' => $sum];
+};
+$run(false); $run(true); // one bounded warm-up per mode
+$before = []; $after = [];
+for ($i = 0; $i < 3; $i++) { $before[] = $run(false); $after[] = $run(true); }
+if (array_unique(array_column([...$before, ...$after], 'checksum')) !== [6000]) {
+    throw new RuntimeException('projection checksum mismatch');
+}
+echo json_encode(['type' => 'isolated_php_decoder_microbenchmark', 'php' => PHP_VERSION,
+    'source_sha' => '2e93ec918774ad64d787aba99fc59a7bc3e54d16',
+    'source_file_sha256' => hash_file('sha256', '/source/product/app/Application/PlayerIslandEventService.php'),
+    'events' => $count, 'bytes_per_event' => strlen($json), 'before' => $before, 'after' => $after,
+    'limits' => 'Synthetic payload; exact decoder only. Excludes DB, HTTP, all other projection work and production load. No API latency claim.'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";

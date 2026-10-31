@@ -1,0 +1,595 @@
+{
+  "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "writer_patch_head": "8509bd5c3c6666db580c6fda2a9c7ce986316642",
+  "variants": {
+    "main": {
+      "runtime": "8.5.8",
+      "dependencies": {
+        "framework": "13.22.0",
+        "lock_sha256": "0703880618c3d85c9aee120e3066897b4ca686b6be1ba3cdf2d043fb28d95fba",
+        "framework_model_sha256": "9cd7e241ac0d5dc0dd0dcb51384f94706902f1c36340bbcaa99d8c4d1e151cdf"
+      },
+      "source_sha256": {
+        "Application/CompleteTurnEngine.php": "633ba74cc87bdac44f258cbb0827e3229bbf7a44cbd8c6c52f162c46251d2c5a",
+        "Application/TurnEventRecorder.php": "418e7ea56693445af2a122aae61f722b338c7d36a0c0ccecee451ee0ca2e85f5",
+        "Domain/Turn/TurnState.php": "c2dd7cfad209774bc2cf114aa163c48c425a8ea2c8b944620f25efd09b4c7ce2",
+        "Application/DeferredMapCellWriter.php": null,
+        "Application/TurnRunner.php": "8583e714aad60dd5ed6269f29e66365b3696341226450851d029b2a4b0392893",
+        "Domain/Turn/TurnPipeline.php": "d2f2a89b1f948c7cd0a37ad6c0efdbf9eaef431fdf2c97654ad319a16c9bf342",
+        "Domain/Turn/DeterministicRandomStream.php": "4904ed92903ff7104cc9d2990ae794685dc08e21dfcb0e7c3ae5106c2a123d47",
+        "Domain/Turn/TurnRandomStreamFactory.php": "1c2f10addd4cea8d76a04c4ba760918debd285e10e8ba61c9a9319f3ad960aae"
+      }
+    },
+    "writer": {
+      "runtime": "8.5.8",
+      "dependencies": {
+        "framework": "13.22.0",
+        "lock_sha256": "0703880618c3d85c9aee120e3066897b4ca686b6be1ba3cdf2d043fb28d95fba",
+        "framework_model_sha256": "9cd7e241ac0d5dc0dd0dcb51384f94706902f1c36340bbcaa99d8c4d1e151cdf"
+      },
+      "source_sha256": {
+        "Application/CompleteTurnEngine.php": "08c83642697ccfe1129d021c04cddc4c96d6fd4c1d60ee7ecbbdb9b73228dbe5",
+        "Application/TurnEventRecorder.php": "418e7ea56693445af2a122aae61f722b338c7d36a0c0ccecee451ee0ca2e85f5",
+        "Domain/Turn/TurnState.php": "c2dd7cfad209774bc2cf114aa163c48c425a8ea2c8b944620f25efd09b4c7ce2",
+        "Application/DeferredMapCellWriter.php": "b71e1e3b85eeeec8ea0ddea740d0ac3288ec53e3445921e5fae6195e714c777b",
+        "Application/TurnRunner.php": "8583e714aad60dd5ed6269f29e66365b3696341226450851d029b2a4b0392893",
+        "Domain/Turn/TurnPipeline.php": "d2f2a89b1f948c7cd0a37ad6c0efdbf9eaef431fdf2c97654ad319a16c9bf342",
+        "Domain/Turn/DeterministicRandomStream.php": "4904ed92903ff7104cc9d2990ae794685dc08e21dfcb0e7c3ae5106c2a123d47",
+        "Domain/Turn/TurnRandomStreamFactory.php": "1c2f10addd4cea8d76a04c4ba760918debd285e10e8ba61c9a9319f3ad960aae"
+      }
+    },
+    "audit": {
+      "runtime": "8.5.8",
+      "dependencies": {
+        "framework": "13.22.0",
+        "lock_sha256": "0703880618c3d85c9aee120e3066897b4ca686b6be1ba3cdf2d043fb28d95fba",
+        "framework_model_sha256": "9cd7e241ac0d5dc0dd0dcb51384f94706902f1c36340bbcaa99d8c4d1e151cdf"
+      },
+      "source_sha256": {
+        "Application/CompleteTurnEngine.php": "4c45abb8accdabcf0a00eef748495912728f02a0ff5aa24c6cd15688c9c8f59b",
+        "Application/TurnEventRecorder.php": "12e2056282cb31ade1bb813c41270ca5253c51ce34c5978a8317696aa70bcd1a",
+        "Domain/Turn/TurnState.php": "d3ae288522365d0f708eca6126161c9886c992f0f956ef0c496e1d3538c9ed74",
+        "Application/DeferredMapCellWriter.php": null,
+        "Application/TurnRunner.php": "8583e714aad60dd5ed6269f29e66365b3696341226450851d029b2a4b0392893",
+        "Domain/Turn/TurnPipeline.php": "d2f2a89b1f948c7cd0a37ad6c0efdbf9eaef431fdf2c97654ad319a16c9bf342",
+        "Domain/Turn/DeterministicRandomStream.php": "4904ed92903ff7104cc9d2990ae794685dc08e21dfcb0e7c3ae5106c2a123d47",
+        "Domain/Turn/TurnRandomStreamFactory.php": "1c2f10addd4cea8d76a04c4ba760918debd285e10e8ba61c9a9319f3ad960aae"
+      }
+    }
+  },
+  "fixtures": {
+    "mature": {
+      "clock": "2026-10-31 12:00:00 UTC (before setUp)",
+      "seed": "0000000000000000000000000000000000000000000000000000000000000000",
+      "rng_source_sha256": {
+        "DeterministicRandomStream": "4904ed92903ff7104cc9d2990ae794685dc08e21dfcb0e7c3ae5106c2a123d47",
+        "TurnRandomStreamFactory": "1c2f10addd4cea8d76a04c4ba760918debd285e10e8ba61c9a9319f3ad960aae"
+      },
+      "tables": 91,
+      "excluded_tables": [
+        "auth_identities",
+        "users",
+        "sessions",
+        "cache",
+        "cache_locks"
+      ],
+      "excluded_columns": [
+        "attachment_token"
+      ],
+      "input_sha256": "f6f5c1c1b814d7f499ffab7611ef95e9f6659eb223668d4631c619ab3dd804d8",
+      "output_sha256": "b8a157ed56cec97d309e65ddfab17e9bc89d450b772a7d5d8ae45b83b946405b",
+      "process_cells_metrics": {
+        "processed": 3600,
+        "forest_growth": 0,
+        "settlements_appeared": 207,
+        "population_increased": 491146,
+        "population_decreased": 0,
+        "stage_transitions": 900,
+        "riots": 0,
+        "fires": 4,
+        "oil_income": 0,
+        "oil_depleted": 0,
+        "damage_blocked": 0,
+        "monsters_killed": 0,
+        "rewards_distributed": 0,
+        "kill_stats_incremented": 0,
+        "missile_launches": 0,
+        "missile_shots_fired": 0,
+        "missile_money_spent": 0,
+        "missile_meaningful_impacts": 0,
+        "missile_ineffective_impacts": 0,
+        "missile_idle_counter_resets": 0,
+        "sea_area_weather_chunks": 16,
+        "missile_boundary_monsters": 0,
+        "secretary_old_bow_eligible_nations": 1,
+        "secretary_old_bow_attempts": 0,
+        "secretary_old_bow_triggers": 0,
+        "secretary_old_bow_misses": 0,
+        "secretary_old_bow_hits": 0,
+        "secretary_old_bow_kills": 0,
+        "secretary_old_bow_no_safe_target": 1,
+        "secretary_bow_eligible_nations": 1,
+        "secretary_bow_attempts": 0,
+        "secretary_bow_hits": 0,
+        "secretary_bow_kills": 0,
+        "secretary_mechanical_bow_finishers": 0,
+        "secretary_bow_finishers": 0,
+        "monsters_loaded": 0,
+        "monster_actions": 0,
+        "monster_moves": 0,
+        "cells_trampled": 0,
+        "defense_self_destructs": 0,
+        "maximum_moves_by_single_monster": 0,
+        "ships_loaded": 0,
+        "ship_events": 0,
+        "ship_moves": 0,
+        "ship_no_port": 0,
+        "ship_blocked": 0,
+        "ship_fuel_shortages": 0,
+        "ship_fuel_damage": 0,
+        "ship_fuel_sunk": 0,
+        "ship_oil_consumed": 0,
+        "ship_fish_applied": 0,
+        "ship_money_applied": 0,
+        "ship_secretary_experience": 0
+      },
+      "nonempty_tables": {
+        "auction_listings": 1,
+        "audit_events": 1132,
+        "command_definitions": 200,
+        "facility_definitions": 22,
+        "map_cells": 3600,
+        "map_chunks": 16,
+        "map_spaces": 1,
+        "merchant_conversation_topics": 2,
+        "migrations": 17,
+        "monster_definitions": 55,
+        "monster_instances": 1,
+        "monster_occupancies": 1,
+        "monument_definitions": 4,
+        "nation_awards": 1,
+        "nation_capitals": 1,
+        "nation_creation_requests": 1,
+        "nation_memberships": 1,
+        "nation_resource_sale_policies": 6,
+        "nation_resources": 7,
+        "nations": 1,
+        "production_definitions": 15,
+        "resource_definitions": 7,
+        "ruleset_versions": 5,
+        "secretaries": 1,
+        "secretary_item_instances": 1,
+        "secretary_skills": 11,
+        "secretary_surface_states": 1,
+        "terrain_definitions": 7,
+        "turn_runs": 1,
+        "user_collection_entries": 1,
+        "world_generation_runs": 2,
+        "worlds": 1
+      }
+    },
+    "growth": {
+      "clock": "2026-10-31 12:00:00 UTC (before setUp)",
+      "seed": "0000000000000000000000000000000000000000000000000000000000000000",
+      "rng_source_sha256": {
+        "DeterministicRandomStream": "4904ed92903ff7104cc9d2990ae794685dc08e21dfcb0e7c3ae5106c2a123d47",
+        "TurnRandomStreamFactory": "1c2f10addd4cea8d76a04c4ba760918debd285e10e8ba61c9a9319f3ad960aae"
+      },
+      "tables": 91,
+      "excluded_tables": [
+        "auth_identities",
+        "users",
+        "sessions",
+        "cache",
+        "cache_locks"
+      ],
+      "excluded_columns": [
+        "attachment_token"
+      ],
+      "input_sha256": "7dc774a7f4fea62e525d5d4ac15da02774a1f1415a3887f333f258998fb54d97",
+      "output_sha256": "386d1a7a0be121b4a2931ce3bde0e44145b649ddf77ffd539d809827d4e8baf1",
+      "process_cells_metrics": {
+        "processed": 3600,
+        "forest_growth": 1199,
+        "settlements_appeared": 254,
+        "population_increased": 660019,
+        "population_decreased": 0,
+        "stage_transitions": 0,
+        "riots": 0,
+        "fires": 0,
+        "oil_income": 0,
+        "oil_depleted": 0,
+        "damage_blocked": 0,
+        "monsters_killed": 0,
+        "rewards_distributed": 0,
+        "kill_stats_incremented": 0,
+        "missile_launches": 0,
+        "missile_shots_fired": 0,
+        "missile_money_spent": 0,
+        "missile_meaningful_impacts": 0,
+        "missile_ineffective_impacts": 0,
+        "missile_idle_counter_resets": 0,
+        "sea_area_weather_chunks": 16,
+        "missile_boundary_monsters": 0,
+        "secretary_old_bow_eligible_nations": 1,
+        "secretary_old_bow_attempts": 0,
+        "secretary_old_bow_triggers": 0,
+        "secretary_old_bow_misses": 0,
+        "secretary_old_bow_hits": 0,
+        "secretary_old_bow_kills": 0,
+        "secretary_old_bow_no_safe_target": 1,
+        "secretary_bow_eligible_nations": 1,
+        "secretary_bow_attempts": 0,
+        "secretary_bow_hits": 0,
+        "secretary_bow_kills": 0,
+        "secretary_mechanical_bow_finishers": 0,
+        "secretary_bow_finishers": 0,
+        "monsters_loaded": 0,
+        "monster_actions": 0,
+        "monster_moves": 0,
+        "cells_trampled": 0,
+        "defense_self_destructs": 0,
+        "maximum_moves_by_single_monster": 0,
+        "ships_loaded": 0,
+        "ship_events": 0,
+        "ship_moves": 0,
+        "ship_no_port": 0,
+        "ship_blocked": 0,
+        "ship_fuel_shortages": 0,
+        "ship_fuel_damage": 0,
+        "ship_fuel_sunk": 0,
+        "ship_oil_consumed": 0,
+        "ship_fish_applied": 0,
+        "ship_money_applied": 0,
+        "ship_secretary_experience": 0
+      },
+      "nonempty_tables": {
+        "auction_listings": 1,
+        "audit_events": 276,
+        "command_definitions": 200,
+        "facility_definitions": 22,
+        "map_cells": 3600,
+        "map_chunks": 16,
+        "map_spaces": 1,
+        "merchant_conversation_topics": 2,
+        "migrations": 17,
+        "monster_definitions": 55,
+        "monster_instances": 1,
+        "monster_occupancies": 1,
+        "monument_definitions": 4,
+        "nation_awards": 1,
+        "nation_capitals": 1,
+        "nation_creation_requests": 1,
+        "nation_memberships": 1,
+        "nation_resource_sale_policies": 6,
+        "nation_resources": 7,
+        "nations": 1,
+        "production_definitions": 15,
+        "resource_definitions": 7,
+        "ruleset_versions": 5,
+        "secretaries": 1,
+        "secretary_item_instances": 1,
+        "secretary_skills": 11,
+        "secretary_surface_states": 1,
+        "terrain_definitions": 7,
+        "turn_runs": 1,
+        "user_collection_entries": 1,
+        "world_generation_runs": 2,
+        "worlds": 1
+      }
+    },
+    "protection": {
+      "clock": "2026-10-31 12:00:00 UTC (before setUp)",
+      "seed": "0000000000000000000000000000000000000000000000000000000000000000",
+      "rng_source_sha256": {
+        "DeterministicRandomStream": "4904ed92903ff7104cc9d2990ae794685dc08e21dfcb0e7c3ae5106c2a123d47",
+        "TurnRandomStreamFactory": "1c2f10addd4cea8d76a04c4ba760918debd285e10e8ba61c9a9319f3ad960aae"
+      },
+      "tables": 91,
+      "excluded_tables": [
+        "auth_identities",
+        "users",
+        "sessions",
+        "cache",
+        "cache_locks"
+      ],
+      "excluded_columns": [
+        "attachment_token"
+      ],
+      "input_sha256": "d2abf472ea086788dae92ddee216ba36cda4d02469b8755a077d2bd5f3e3d9ae",
+      "output_sha256": "b2f7690ccb11c0e2d03ceca7786e9ae95ff90074e7ba50ea70553cf414c40e76",
+      "process_cells_metrics": {
+        "processed": 1024,
+        "forest_growth": 511,
+        "settlements_appeared": 0,
+        "population_increased": 319,
+        "population_decreased": 0,
+        "stage_transitions": 0,
+        "riots": 0,
+        "fires": 0,
+        "oil_income": 0,
+        "oil_depleted": 0,
+        "damage_blocked": 0,
+        "monsters_killed": 0,
+        "rewards_distributed": 0,
+        "kill_stats_incremented": 0,
+        "missile_launches": 0,
+        "missile_shots_fired": 0,
+        "missile_money_spent": 0,
+        "missile_meaningful_impacts": 0,
+        "missile_ineffective_impacts": 0,
+        "missile_idle_counter_resets": 0,
+        "sea_area_weather_chunks": 4,
+        "missile_boundary_monsters": 0,
+        "secretary_old_bow_eligible_nations": 1,
+        "secretary_old_bow_attempts": 0,
+        "secretary_old_bow_triggers": 0,
+        "secretary_old_bow_misses": 0,
+        "secretary_old_bow_hits": 0,
+        "secretary_old_bow_kills": 0,
+        "secretary_old_bow_no_safe_target": 1,
+        "secretary_bow_eligible_nations": 1,
+        "secretary_bow_attempts": 0,
+        "secretary_bow_hits": 0,
+        "secretary_bow_kills": 0,
+        "secretary_mechanical_bow_finishers": 0,
+        "secretary_bow_finishers": 0,
+        "monsters_loaded": 0,
+        "monster_actions": 0,
+        "monster_moves": 0,
+        "cells_trampled": 0,
+        "defense_self_destructs": 0,
+        "maximum_moves_by_single_monster": 0,
+        "ships_loaded": 0,
+        "ship_events": 0,
+        "ship_moves": 0,
+        "ship_no_port": 0,
+        "ship_blocked": 0,
+        "ship_fuel_shortages": 0,
+        "ship_fuel_damage": 0,
+        "ship_fuel_sunk": 0,
+        "ship_oil_consumed": 0,
+        "ship_fish_applied": 0,
+        "ship_money_applied": 0,
+        "ship_secretary_experience": 0
+      },
+      "nonempty_tables": {
+        "auction_listings": 1,
+        "audit_events": 17,
+        "command_definitions": 200,
+        "facility_definitions": 22,
+        "map_cells": 1024,
+        "map_chunks": 4,
+        "map_spaces": 1,
+        "merchant_conversation_topics": 2,
+        "migrations": 17,
+        "monster_definitions": 55,
+        "monument_definitions": 4,
+        "nation_capitals": 1,
+        "nation_creation_requests": 1,
+        "nation_memberships": 1,
+        "nation_resource_sale_policies": 6,
+        "nation_resources": 7,
+        "nations": 1,
+        "production_definitions": 15,
+        "resource_definitions": 7,
+        "ruleset_versions": 5,
+        "secretaries": 1,
+        "secretary_item_instances": 1,
+        "secretary_skills": 11,
+        "secretary_surface_states": 1,
+        "terrain_definitions": 7,
+        "turn_runs": 1,
+        "user_collection_entries": 1,
+        "world_generation_runs": 2,
+        "worlds": 1
+      }
+    }
+  },
+  "median_deltas": [
+    {
+      "fixture": "mature",
+      "variant": "writer",
+      "total_wall_ms": {
+        "main": 3290.066,
+        "candidate": 2768.924,
+        "change_percent": -15.84
+      },
+      "total_php_cpu_ms": {
+        "main": 2166.899,
+        "candidate": 1835.465,
+        "change_percent": -15.3
+      },
+      "total_queries": {
+        "main": 3355,
+        "candidate": 2455,
+        "change_percent": -26.83
+      },
+      "cell_wall_ms": {
+        "main": 2567.641,
+        "candidate": 2029.42,
+        "change_percent": -20.96
+      },
+      "cell_php_cpu_ms": {
+        "main": 1583.009,
+        "candidate": 1253.719,
+        "change_percent": -20.8
+      },
+      "cell_queries": {
+        "main": 3143,
+        "candidate": 2243,
+        "change_percent": -28.64
+      }
+    },
+    {
+      "fixture": "mature",
+      "variant": "audit",
+      "total_wall_ms": {
+        "main": 3290.066,
+        "candidate": 3118.641,
+        "change_percent": -5.21
+      },
+      "total_php_cpu_ms": {
+        "main": 2166.899,
+        "candidate": 2160.345,
+        "change_percent": -0.3
+      },
+      "total_queries": {
+        "main": 3355,
+        "candidate": 2245,
+        "change_percent": -33.08
+      },
+      "cell_wall_ms": {
+        "main": 2567.641,
+        "candidate": 2327.465,
+        "change_percent": -9.35
+      },
+      "cell_php_cpu_ms": {
+        "main": 1583.009,
+        "candidate": 1528.727,
+        "change_percent": -3.43
+      },
+      "cell_queries": {
+        "main": 3143,
+        "candidate": 2033,
+        "change_percent": -35.32
+      }
+    },
+    {
+      "fixture": "growth",
+      "variant": "writer",
+      "total_wall_ms": {
+        "main": 3093.306,
+        "candidate": 1815.176,
+        "change_percent": -41.32
+      },
+      "total_php_cpu_ms": {
+        "main": 2115.387,
+        "candidate": 1331.519,
+        "change_percent": -37.06
+      },
+      "total_queries": {
+        "main": 3138,
+        "candidate": 744,
+        "change_percent": -76.29
+      },
+      "cell_wall_ms": {
+        "main": 2435.462,
+        "candidate": 1132.212,
+        "change_percent": -53.51
+      },
+      "cell_php_cpu_ms": {
+        "main": 1597.819,
+        "candidate": 810.585,
+        "change_percent": -49.27
+      },
+      "cell_queries": {
+        "main": 2928,
+        "candidate": 534,
+        "change_percent": -81.76
+      }
+    },
+    {
+      "fixture": "growth",
+      "variant": "audit",
+      "total_wall_ms": {
+        "main": 3093.306,
+        "candidate": 3019.768,
+        "change_percent": -2.38
+      },
+      "total_php_cpu_ms": {
+        "main": 2115.387,
+        "candidate": 2108.585,
+        "change_percent": -0.32
+      },
+      "total_queries": {
+        "main": 3138,
+        "candidate": 2884,
+        "change_percent": -8.09
+      },
+      "cell_wall_ms": {
+        "main": 2435.462,
+        "candidate": 2344.266,
+        "change_percent": -3.74
+      },
+      "cell_php_cpu_ms": {
+        "main": 1597.819,
+        "candidate": 1575.142,
+        "change_percent": -1.42
+      },
+      "cell_queries": {
+        "main": 2928,
+        "candidate": 2674,
+        "change_percent": -8.67
+      }
+    },
+    {
+      "fixture": "protection",
+      "variant": "writer",
+      "total_wall_ms": {
+        "main": 762.597,
+        "candidate": 460.179,
+        "change_percent": -39.66
+      },
+      "total_php_cpu_ms": {
+        "main": 561.007,
+        "candidate": 362.681,
+        "change_percent": -35.35
+      },
+      "total_queries": {
+        "main": 696,
+        "candidate": 186,
+        "change_percent": -73.28
+      },
+      "cell_wall_ms": {
+        "main": 468.667,
+        "candidate": 184.083,
+        "change_percent": -60.72
+      },
+      "cell_php_cpu_ms": {
+        "main": 339.925,
+        "candidate": 152.321,
+        "change_percent": -55.19
+      },
+      "cell_queries": {
+        "main": 531,
+        "candidate": 21,
+        "change_percent": -96.05
+      }
+    },
+    {
+      "fixture": "protection",
+      "variant": "audit",
+      "total_wall_ms": {
+        "main": 762.597,
+        "candidate": 719.405,
+        "change_percent": -5.66
+      },
+      "total_php_cpu_ms": {
+        "main": 561.007,
+        "candidate": 522.029,
+        "change_percent": -6.95
+      },
+      "total_queries": {
+        "main": 696,
+        "candidate": 696,
+        "change_percent": 0.0
+      },
+      "cell_wall_ms": {
+        "main": 468.667,
+        "candidate": 442.518,
+        "change_percent": -5.58
+      },
+      "cell_php_cpu_ms": {
+        "main": 339.925,
+        "candidate": 310.994,
+        "change_percent": -8.51
+      },
+      "cell_queries": {
+        "main": 531,
+        "candidate": 531,
+        "change_percent": 0.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+from pathlib import Path
+import argparse
+import csv
+import hashlib
+import json
+import statistics
+
+ROOT = Path(__file__).parent
+
+def load(path):
+    return json.loads(Path(path).read_text())
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+def turn_audit(report):
+    run = report['output']['tables']['turn_runs'][0]
+    return [row for row in report['output']['tables']['audit_events']
+            if row['metadata'].get('turn_run_id') == run['id']]
+
+def draw_fields(value, path=''):
+    result = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if 'draw' in key:
+                result.append([f'{path}.{key}', child])
+            else:
+                result.extend(draw_fields(child, f'{path}.{key}'))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            result.extend(draw_fields(child, f'{path}[{index}]'))
+    return result
+
+def differences(left, right, path='', limit=12):
+    found = []
+    if type(left) != type(right):
+        return [{'path': path, 'left': left, 'right': right}]
+    if isinstance(left, dict):
+        for key in sorted(left.keys() | right.keys()):
+            if key not in left or key not in right:
+                found.append({'path': f'{path}.{key}', 'left': left.get(key), 'right': right.get(key)})
+            else:
+                found.extend(differences(left[key], right[key], f'{path}.{key}', limit - len(found)))
+            if len(found) >= limit:
+                break
+    elif isinstance(left, list):
+        if len(left) != len(right):
+            found.append({'path': path + '.length', 'left': len(left), 'right': len(right)})
+        for index, (a, b) in enumerate(zip(left, right)):
+            found.extend(differences(a, b, f'{path}[{index}]', limit - len(found)))
+            if len(found) >= limit:
+                break
+    elif left != right:
+        found.append({'path': path, 'left': left, 'right': right})
+    return found
+
+def comparison(left, right):
+    phases_a = left['measurement']['phases']
+    phases_b = right['measurement']['phases']
+    audit_a = turn_audit(left)
+    audit_b = turn_audit(right)
+    checks = {
+        'fixture_recipe_equal': left['fixture_recipe_sha256'] == right['fixture_recipe_sha256'],
+        'input_identical': left['input']['sha256'] == right['input']['sha256'],
+        'output_identical': left['output']['sha256'] == right['output']['sha256'],
+        'all_table_digests_equal': left['output']['table_digests'] == right['output']['table_digests'],
+        'all_phase_metrics_equal': {key: value['metrics'] for key, value in phases_a.items()}
+            == {key: value['metrics'] for key, value in phases_b.items()},
+        'phase_order_equal': list(phases_a) == list(phases_b),
+        'master_seed_equal': left['random_seed'] == right['random_seed'],
+        'rng_source_hashes_equal': left['rng_source_sha256'] == right['rng_source_sha256'],
+        'dependency_versions_equal': left['dependency_versions'] == right['dependency_versions'],
+        'turn_audit_identical': audit_a == audit_b,
+        'recorded_draw_fields_equal': draw_fields(audit_a) == draw_fields(audit_b),
+    }
+    return {
+        'left': left['label'], 'right': right['label'], 'checks': checks,
+        'passed': all(checks.values()),
+        'captured_tables': len(left['output']['tables']),
+        'turn_audit_rows': len(audit_a), 'recorded_draw_fields': len(draw_fields(audit_a)),
+        'audit_sha256': digest(audit_a), 'input_sha256': left['input']['sha256'],
+        'output_sha256': left['output']['sha256'],
+        'first_input_differences': [] if checks['input_identical'] else differences(left['input']['tables'], right['input']['tables']),
+        'first_output_differences': [] if checks['output_identical'] else differences(left['output']['tables'], right['output']['tables']),
+    }
+
+def cpu(measurement, total=False):
+    prefix = 'total_' if total else ''
+    return round(measurement[prefix + 'cpu_user_ms'] + measurement[prefix + 'cpu_system_ms'], 3)
+
+def summarize():
+    reports = []
+    for path in sorted(ROOT.glob('*-r[123].json')):
+        report = load(path)
+        if 'measurement' in report:
+            reports.append((path, report))
+    checks = []
+    sample_rows = []
+    phase_rows = []
+    for path, report in reports:
+        label = report['label']
+        variant, fixture, round_name = label.split('-')
+        baseline = ROOT / f'main-{fixture}-r1.json'
+        checks.append(comparison(load(baseline), report))
+        m = report['measurement']
+        c = m['phases']['process_cells']
+        sample_rows.append({
+            'variant': variant, 'fixture': fixture, 'round': round_name,
+            'total_wall_ms': m['total_wall_ms'], 'total_php_cpu_ms': cpu(m, True),
+            'total_queries': m['total_queries'], 'cell_wall_ms': c['wall_ms'],
+            'cell_php_cpu_ms': cpu(c), 'cell_queries': c['queries'],
+            'cell_query_time_ms': c['query_time_ms'], 'cell_insert': c['query_types'].get('insert', 0),
+            'cell_select': c['query_types'].get('select', 0), 'cell_update': c['query_types'].get('update', 0),
+            'cell_peak_increment_bytes': c['peak_memory_bytes'],
+        })
+        for phase, data in m['phases'].items():
+            phase_rows.append({
+                'variant': variant, 'fixture': fixture, 'round': round_name, 'phase': phase,
+                'wall_ms': data['wall_ms'], 'php_cpu_ms': cpu(data), 'queries': data['queries'],
+                'query_time_ms': data['query_time_ms'], 'insert': data['query_types'].get('insert', 0),
+                'select': data['query_types'].get('select', 0), 'update': data['query_types'].get('update', 0),
+            })
+    for name, rows in [('samples.csv', sample_rows), ('phases.csv', phase_rows)]:
+        if rows:
+            with (ROOT / name).open('w', newline='') as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+                writer.writeheader()
+                writer.writerows(rows)
+    groups = []
+    for fixture in ['mature', 'growth', 'protection']:
+        for variant in ['main', 'writer', 'audit']:
+            rows = [row for row in sample_rows if row['fixture'] == fixture and row['variant'] == variant]
+            if not rows:
+                continue
+            group = {'fixture': fixture, 'variant': variant, 'samples': len(rows)}
+            for key in ['total_wall_ms', 'total_php_cpu_ms', 'total_queries', 'cell_wall_ms', 'cell_php_cpu_ms',
+                        'cell_queries', 'cell_query_time_ms', 'cell_insert', 'cell_select', 'cell_update', 'cell_peak_increment_bytes']:
+                values = [row[key] for row in rows]
+                group[key] = {'min': min(values), 'median': statistics.median(values), 'max': max(values)}
+            groups.append(group)
+    result = {'samples': len(sample_rows), 'all_comparisons_pass': all(check['passed'] for check in checks),
+              'comparisons': checks, 'groups': groups}
+    (ROOT / 'comparison.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
+    return result
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('paths', nargs='*')
+    args = parser.parse_args()
+    if len(args.paths) == 2:
+        result = comparison(load(args.paths[0]), load(args.paths[1]))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        raise SystemExit(0 if result['passed'] else 1)
+    result = summarize()
+    print(json.dumps({'samples': result['samples'], 'all_comparisons_pass': result['all_comparisons_pass'],
+                      'groups': result['groups']}, ensure_ascii=False, indent=2))
+    raise SystemExit(0 if result['all_comparisons_pass'] else 1)

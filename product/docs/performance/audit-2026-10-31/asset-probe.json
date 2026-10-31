@@ -1,0 +1,42 @@
+{
+    "php": "8.5.8",
+    "workload": "256 same-asset resolves, 3 short rounds, synthetic 1px GIF, existing resolver with config stub; no DB",
+    "rows": [
+        {
+            "candidate_request_local_memo": false,
+            "samples_ms": [
+                1.462073,
+                1.646942,
+                1.50791
+            ],
+            "getimagesize_calls": [
+                256,
+                256,
+                256
+            ],
+            "checksums": [
+                "40dd68acf7acd3e0df7f650a4cd596a3620e7bd4987cf8a4b1a04092fa97fb31",
+                "40dd68acf7acd3e0df7f650a4cd596a3620e7bd4987cf8a4b1a04092fa97fb31",
+                "40dd68acf7acd3e0df7f650a4cd596a3620e7bd4987cf8a4b1a04092fa97fb31"
+            ]
+        },
+        {
+            "candidate_request_local_memo": true,
+            "samples_ms": [
+                0.01417,
+                0.010595,
+                0.010259
+            ],
+            "getimagesize_calls": [
+                1,
+                1,
+                1
+            ],
+            "checksums": [
+                "40dd68acf7acd3e0df7f650a4cd596a3620e7bd4987cf8a4b1a04092fa97fb31",
+                "40dd68acf7acd3e0df7f650a4cd596a3620e7bd4987cf8a4b1a04092fa97fb31",
+                "40dd68acf7acd3e0df7f650a4cd596a3620e7bd4987cf8a4b1a04092fa97fb31"
+            ]
+        }
+    ]
+}

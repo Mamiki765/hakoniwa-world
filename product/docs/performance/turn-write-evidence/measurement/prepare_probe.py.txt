@@ -1,0 +1,115 @@
+from pathlib import Path
+import hashlib
+import json
+import subprocess
+
+ROOT = Path('/workspace/perf-turn-write-20261031/measurement')
+ROOT.mkdir(parents=True, exist_ok=True)
+old = Path('/workspace/perf-integration-20261031/turn/TurnIntegrationSnapshotTest.php')
+text = old.read_text()
+text = text.replace('namespace Tests\\IntegrationAudit;', 'namespace Tests\\TurnWriteAudit;', 1)
+text = text.replace('final class TurnIntegrationSnapshotTest extends TestCase', 'final class TurnWriteSnapshotTest extends TestCase', 1)
+
+fixed_sha = '8509bd5c3c6666db580c6fda2a9c7ce986316642'
+w_source = subprocess.check_output([
+    'git', 'show', fixed_sha + ':product/tests/Feature/TurnRuntimePerformanceTest.php'
+], cwd='/workspace/hakoniwa-world', text=True)
+
+def fixture_method(source):
+    start = source.index('    private function processCellProfileWorld(')
+    end = source.index('    /** @param list<int> $cellIds */', start)
+    return source[start:end]
+
+text = text.replace(fixture_method(text), fixture_method(w_source), 1)
+anchor = '    use UsesIndividualTestWorld;\n'
+assert anchor in text
+text = text.replace(anchor, anchor + r'''
+
+    protected function setUp(): void
+    {
+        // Freeze before migrations/catalog installation as well as fixture generation.
+        \Illuminate\Support\Carbon::setTestNow('2026-10-31 12:00:00 UTC');
+        Str::createUuidsUsing(static fn () => \Ramsey\Uuid\Uuid::fromString('00000000-0000-4000-8000-000000000031'));
+        parent::setUp();
+        fake()->seed(20261031);
+    }
+
+    protected function tearDown(): void
+    {
+        try {
+            parent::tearDown();
+        } finally {
+            Str::createUuidsNormally();
+            \Illuminate\Support\Carbon::setTestNow();
+        }
+    }
+
+    public function test_selected_fixture_has_complete_state_evidence(): void
+    {
+        $fixture = getenv('TURN_WRITE_FIXTURE');
+        $expectedCells = match ($fixture) {
+            'mature', 'growth' => 3_600,
+            'protection' => 1_024,
+            default => throw new \RuntimeException('Explicit known synthetic fixture is required.'),
+        };
+        $world = $this->processCellProfileWorld($expectedCells, $fixture);
+        $measurement = $this->measureTurn($world);
+        $this->report($fixture, $measurement);
+        $this->assertSame(TurnPipeline::CANONICAL_PHASE_KEYS, array_keys($measurement['phases']));
+        $this->assertSame($expectedCells, $measurement['phases']['process_cells']['metrics']['processed']);
+        if ($fixture === 'growth') {
+            $this->assertGreaterThan(1_000, $measurement['phases']['process_cells']['metrics']['forest_growth']);
+            $this->assertGreaterThan(0, $measurement['phases']['process_cells']['metrics']['population_increased']);
+        }
+    }
+''', 1)
+
+text = text.replace("'fixture' => 'existing 60x60-mature, frozen clock/Faker/registration UUID only',", "'fixture' => getenv('TURN_WRITE_FIXTURE'),\n            'frozen_clock' => '2026-10-31 12:00:00 UTC (before setUp)',\n            'fixture_recipe_sha256' => '" + hashlib.sha256(fixture_method(w_source).encode()).hexdigest() + "',", 1)
+anchor = "            'measurement' => $measurement,"
+assert anchor in text
+text = text.replace(anchor, r'''            'dependency_versions' => [
+                'framework' => \Illuminate\Foundation\Application::VERSION,
+                'lock_sha256' => hash_file('sha256', base_path('composer.lock')),
+                'framework_model_sha256' => hash_file('sha256', base_path('vendor/laravel/framework/src/Illuminate/Database/Eloquent/Model.php')),
+            ],
+            'source_sha256' => array_combine(
+                $sourcePaths = [
+                    'Application/CompleteTurnEngine.php', 'Application/TurnEventRecorder.php',
+                    'Domain/Turn/TurnState.php', 'Application/DeferredMapCellWriter.php',
+                    'Application/TurnRunner.php', 'Domain/Turn/TurnPipeline.php',
+                    'Domain/Turn/DeterministicRandomStream.php', 'Domain/Turn/TurnRandomStreamFactory.php',
+                ],
+                array_map(static fn (string $path): ?string => is_file(app_path($path))
+                    ? hash_file('sha256', app_path($path)) : null, $sourcePaths),
+            ),
+            'measurement' => $measurement,''', 1)
+
+start = text.index('        $excludedTables = [', text.index('private function auditStateSnapshot'))
+end = text.index('        $tableNames = DB::table', start)
+text = text[:start] + r'''        // Authentication/cache contents are never selected. Every other public table is captured.
+        $excludedTables = ['auth_identities', 'users', 'sessions', 'cache', 'cache_locks'];
+        $excludedColumns = ['attachment_token'];
+''' + text[end:]
+text = text.replace('            foreach (DB::table($table)->get() as $record) {', r'''            $columns = DB::table('information_schema.columns')
+                ->where('table_schema', 'public')->where('table_name', $table)
+                ->whereNotIn('column_name', $excludedColumns)
+                ->orderBy('ordinal_position')->pluck('column_name')->all();
+            foreach (DB::table($table)->select($columns)->get() as $record) {''', 1)
+
+target = ROOT / 'TurnWriteSnapshotTest.php'
+target.write_text(text)
+manifest = {
+    'baseline_sha': '2e93ec918774ad64d787aba99fc59a7bc3e54d16',
+    'writer_pr_head': fixed_sha,
+    'fixture_recipe_source': 'product/tests/Feature/TurnRuntimePerformanceTest.php::processCellProfileWorld',
+    'fixture_recipe_sha256': hashlib.sha256(fixture_method(w_source).encode()).hexdigest(),
+    'probe_sha256': hashlib.sha256(target.read_bytes()).hexdigest(),
+    'previous_probe_sha256': hashlib.sha256(old.read_bytes()).hexdigest(),
+    'only_selected_test_runs': 'test_selected_fixture_has_complete_state_evidence',
+    'snapshot_excluded_tables': ['auth_identities', 'users', 'sessions', 'cache', 'cache_locks'],
+    'snapshot_excluded_columns': ['attachment_token'],
+    'snapshot_additional_exclusion': 'turn_runs.phase_results[*].duration_ms',
+    'clock': '2026-10-31 12:00:00 UTC before parent::setUp, held through output capture',
+}
+(ROOT / 'probe-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+print(json.dumps(manifest, indent=2))

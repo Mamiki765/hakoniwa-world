@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="Tests\Feature\CommandResponseSqlProbeTest" file="/evidence/CommandResponseSqlProbeTest.php" tests="1" assertions="9" errors="0" failures="0" skipped="0" time="2.115776">
+    <testcase name="test_repeated_queue_targets_are_reread_per_row" file="/evidence/CommandResponseSqlProbeTest.php" line="26" class="Tests\Feature\CommandResponseSqlProbeTest" classname="Tests.Feature.CommandResponseSqlProbeTest" assertions="9" time="2.115776"/>
+  </testsuite>
+</testsuites>

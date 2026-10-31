@@ -1,0 +1,65 @@
+Laravel configuration cache is absent; config:clear skipped.
+scope: surface
+total discovered files: 130
+shard count: 1
+assignment strategy: deterministic_fallback
+historical timing files: 0
+historical timing sources: 0
+shard 01/01 assigned files: 130, predicted seconds: 130.000000
+fixture standard files: 78
+fixture reusable_surface files: 22
+fixture individual files: 30
+union count: 130
+duplicate count: 0
+missing count: 0
+unexpected count: 0
+scope: surface
+total discovered files: 1
+shard count: 1
+assignment strategy: deterministic_fallback
+historical timing files: 0
+historical timing sources: 0
+shard 01/01 assigned files: 1, predicted seconds: 1.000000
+fixture standard files: 1
+fixture reusable_surface files: 0
+fixture individual files: 0
+union count: 1
+duplicate count: 0
+missing count: 0
+unexpected count: 0
+selected test identifiers: 1
+Focused setup: arguments=0.082073s metadata=0.097852s config_clear=0.001911s scope_plan=0.126857s phpunit_list=0.321230s focused_plan=0.054918s
+/var/www/html/storage/framework/testing/phpunit-parallel-6306519a/manifest.json
+Parallel test manifest: storage/framework/testing/phpunit-parallel-6306519a/manifest.json
+Parallel test evidence: /var/www/html/storage/framework/testing/test-evidence/phpunit-parallel-6306519a
+Starting shard 01/01 with 1 files.
+
+===== PHPUnit shard 01/01 =====
+
+===== Fixture standard =====
+PHPUnit 12.5.32 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.8
+Configuration: /var/www/html/storage/framework/testing/phpunit-parallel-6306519a/phpunit-01.xml
+
+F                                                                   1 / 1 (100%)
+
+Time: 00:01.755, Memory: 62.50 MB
+
+There was 1 failure:
+
+1) Tests\Feature\HotfixCommandQueueCorruptionTest::test_cancelling_the_tail_keeps_the_unchanged_prefix_visible
+Expected response status code [201] but received 503.
+Failed asserting that 503 is identical to 201.
+
+/var/www/html/vendor/laravel/framework/src/Illuminate/Testing/TestResponseAssert.php:45
+/var/www/html/vendor/laravel/framework/src/Illuminate/Testing/TestResponse.php:176
+/var/www/html/vendor/laravel/framework/src/Illuminate/Testing/Concerns/AssertsStatusCodes.php:26
+/var/www/html/tests/Feature/HotfixCommandQueueCorruptionTest.php:149
+/var/www/html/tests/Feature/HotfixCommandQueueCorruptionTest.php:117
+/var/www/html/tests/Feature/HotfixCommandQueueCorruptionTest.php:26
+
+FAILURES!
+Tests: 1, Assertions: 1, Failures: 1.
+One or more PHPUnit shards failed.
+Script bash tests/scripts/run_parallel_tests.sh handling the test:parallel event returned with error code 1

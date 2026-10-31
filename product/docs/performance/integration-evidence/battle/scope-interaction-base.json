@@ -1,0 +1,30 @@
+{
+    "mode": "base",
+    "php": "8.5.8",
+    "framework": "13.22.0",
+    "checks": {
+        "same_scope_resolver_lifetime_matches_version": true,
+        "different_hp_reaches_fresh_mutable_combat_state": true,
+        "same_seed_replays_after_other_fight": true,
+        "combat_does_not_mutate_cached_catalog": true,
+        "combat_does_not_mutate_input_snapshot": true,
+        "player_level_is_resolved_outside_catalog_cache": true,
+        "resolved_item_economics_are_per_call": true,
+        "item_nested_copy_is_isolated": true,
+        "item_override_stays_live_after_warm_base_cache": true,
+        "framework_worker_has_reset_scope_callback": true,
+        "worker_callback_discards_scoped_instances": true,
+        "next_scope_catalog_has_same_immutable_content": true,
+        "next_scope_same_seed_has_same_result": true,
+        "constant_item_catalog_remains_valid_across_worker_reset": true,
+        "worker_reset_and_fights_do_not_open_database_connections": true
+    },
+    "checked_count": 15,
+    "catalog_hash": "c774bd3733e1c0e687650b6676965f30bf270aec25327c31b2645af14c64123e",
+    "fight_hash": "2f9b6193125a0450c4ac13014449983ab3746004889fd05188dec02ef557818c",
+    "changed_hp_fight_hash": "84613e20f0453108f839a8d76bd25bc4388b79fc8f3f6b7c6d05bd70da6c8977",
+    "item_hash": "59b98681dca04cef742d12b1a4b60ad5c87b0af28cf1b555b2fd4a55fcebf77f",
+    "scope_reset_source": "/var/www/html/vendor/laravel/framework/src/Illuminate/Queue/QueueServiceProvider.php",
+    "scope_reset_line": 247,
+    "database_connections": 0
+}

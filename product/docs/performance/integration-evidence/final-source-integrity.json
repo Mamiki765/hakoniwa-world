@@ -1,0 +1,111 @@
+{
+  "combined_tree": "99585a57f9d48007a5581ddf6ae1b42554841c9e",
+  "all_changed_source_hashes_match": true,
+  "checked": 26,
+  "files": [
+    {
+      "path": "product/app/Application/BoostScheduleService.php",
+      "sha256": "7675a4b6b40be8ab3d3b1c45688c30f1bd590b762c06feb1d3c0ea9090b62067"
+    },
+    {
+      "path": "product/app/Application/CommandQuantitySemantics.php",
+      "sha256": "8f6e1875f5c5408af46247eeaf03583045d9f9bf6fcbe9f7a150ef275cedf11f"
+    },
+    {
+      "path": "product/app/Application/CommandQueueService.php",
+      "sha256": "0f1d51fd9f88297563fb3a58833cd0db2b9f7656d71a78b6e8573dcb8a703edb"
+    },
+    {
+      "path": "product/app/Application/DisasterMutableCellIndex.php",
+      "sha256": "4e8a705e6b3160f2edd66cb427d7d8133ff9de884467446536a1bf1035b522c6"
+    },
+    {
+      "path": "product/app/Application/DisasterTurnService.php",
+      "sha256": "4b8500c186614143bec9c49936067ac97409da72684a5cbe21d38655ac6fe72c"
+    },
+    {
+      "path": "product/app/Application/Underground/UndergroundAlphaV1PlayerCatalog.php",
+      "sha256": "c1bfd2652f91473f995a2a1f81a3e5bed065ce6e50b86fe901af5bb412e0f5ac"
+    },
+    {
+      "path": "product/app/Domain/Secretary/SecretaryItemCatalog.php",
+      "sha256": "7206b3fd8d4eb2bd396755abd39d99dcf84c13a4eba29e490b211f5bf3d5b769"
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/CommandQueueController.php",
+      "sha256": "28cc3f73bdb8a7e186f82d257ec3aa6476c1bd4025c15ac21373b568206dcce7"
+    },
+    {
+      "path": "product/app/Providers/AppServiceProvider.php",
+      "sha256": "39d2fdaa791bb6530bd56fc637dd2a5e069ce085e9adc069d548c6ab33aa5801"
+    },
+    {
+      "path": "product/docs/performance/boost-series-projection.md",
+      "sha256": "81ffbdab67c6664a709425ef1374715df5ebeea03d70201fde94d642f7029a90"
+    },
+    {
+      "path": "product/docs/performance/bulk-command-planning.md",
+      "sha256": "0fe95f05a9f291fedb381c3636740d16561004382fd1f7dea2af2edc18f8b346"
+    },
+    {
+      "path": "product/docs/performance/command-response-batching-2026-10-31.md",
+      "sha256": "d4da653d7eeada287514c571cd816da8b01abf37bc56649edbba91dff42c8369"
+    },
+    {
+      "path": "product/docs/performance/evidence/bulk-plan-before-after.json",
+      "sha256": "38b1f2de8146ffeeeeb86101f2e64822bb5c283fcd8fa37ad0f47f9706f300ed"
+    },
+    {
+      "path": "product/docs/performance/secretary-item-catalog-2026-10-31.md",
+      "sha256": "535eeb6be3b5bce4ea5b5eca447f4d986f7926daa91278d7b7b81e42ea130be1"
+    },
+    {
+      "path": "product/docs/performance/underground-ai-selection-candidate.md",
+      "sha256": "8bf41e36e0c00c5610b054d86fc4dc5c81dbc0ad84b89d0fc6af913882d3c25e"
+    },
+    {
+      "path": "product/docs/performance/underground-catalog-reuse.md",
+      "sha256": "a3638d497770d00d5064c724758d258b4bac6cc1b05f1ce1522794b392318419"
+    },
+    {
+      "path": "product/docs/performance/underground-combat-followups.md",
+      "sha256": "f463c07ebb949458ef323c80b33de1552895edc939de9189e7148c984313ae65"
+    },
+    {
+      "path": "product/docs/performance/underground-equipment-projection-candidate.md",
+      "sha256": "52e29347a14a6c7b4154a5ea81ce618916f27dc24565e70d16f8e6941dc22241"
+    },
+    {
+      "path": "product/docs/performance/underground-lending-select-candidate.md",
+      "sha256": "981d394987c04db65ebab579dea4e8406a3d3337f2fa4d29a479a19939aab85b"
+    },
+    {
+      "path": "product/docs/performance/undersea-fire-station-neighbors.md",
+      "sha256": "a74e6cd11f3a573d8c2fe15728e9984fe582d9fad0e0dff87384c6794f58aec1"
+    },
+    {
+      "path": "product/tests/Feature/BoostScheduleTest.php",
+      "sha256": "e105e07d6c544b768c496fbd7f66c100b0542c870def500fdc9d88b23f66f343"
+    },
+    {
+      "path": "product/tests/Feature/CommandQueueAndSalePolicyTest.php",
+      "sha256": "8f6e182d9ee2fcf90f19ccdb8472abbf18a30bec7f0cf553f6a9480101277714"
+    },
+    {
+      "path": "product/tests/Feature/DisasterAndOilTurnTest.php",
+      "sha256": "ae08b9929e1287bdfd8b60290ffc7943724d86d97ead29c1274a3760e2fbd418"
+    },
+    {
+      "path": "product/tests/Underground/Unit/UndergroundRuntimeCatalogPartyAuthoringTest.php",
+      "sha256": "46f9d9c733fd5e599144f666602aa7f5134baf1068405a9dc14948e2336f4932"
+    },
+    {
+      "path": "product/tests/Unit/DisasterMutableCellIndexTest.php",
+      "sha256": "14b1e74eeec079fea92719c2e83efa36e0333322016d063fee6f1d9126a93e54"
+    },
+    {
+      "path": "product/tests/Unit/SecretaryItemGameplayContractTest.php",
+      "sha256": "8884dc9a37d60e7b69f98060a82f90bc5e129e446425dea4383b2b4246b4df1c"
+    }
+  ]
+}

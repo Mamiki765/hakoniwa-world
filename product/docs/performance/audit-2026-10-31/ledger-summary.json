@@ -1,0 +1,21 @@
+{
+  "rows": 1057,
+  "by_source": {
+    "command": 31,
+    "turn": 65,
+    "battle": 37,
+    "api-db": 393,
+    "foundation": 276,
+    "frontend": 80,
+    "supplement": 175
+  },
+  "pending_confirmation_rows": [
+    {
+      "row_id": "command-coverage.csv:32",
+      "entry": "DB real execution plan/network pressure",
+      "state": "未確認",
+      "limit": "合成GET1case以外は未測定。本番/OCI/実データは対象外"
+    }
+  ],
+  "meaning": "異なる粒度の台帳をconcat、同じfile/処理の重複を含む。行数を独立処理数/実行分岐数としない。参照元の動的未確認列も確認する。"
+}

@@ -1,0 +1,28 @@
+{
+  "source_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "files": 758,
+  "symbols": 3751,
+  "families": {
+    "ci": 2,
+    "operations": 18,
+    "app/Application": 178,
+    "app/Console": 24,
+    "app/Domain": 155,
+    "app/Http": 89,
+    "app/Models": 72,
+    "app/Providers": 1,
+    "app/Rules": 2,
+    "app/Services": 4,
+    "app/Support": 1,
+    "bootstrap": 2,
+    "build-config": 5,
+    "config": 66,
+    "database": 33,
+    "public-entry": 2,
+    "styles": 10,
+    "frontend": 80,
+    "views": 12,
+    "routes": 2
+  },
+  "excluded": "archive body, environment/credential files, vendor, node_modules, tests and test fixtures as performance targets (existing focused tests used as evidence)"
+}

@@ -1,0 +1,51 @@
+[
+  {
+    "stage": "install",
+    "command": [
+      "npm",
+      "ci"
+    ],
+    "exit_code": 0,
+    "seconds": 6.890178212999672
+  },
+  {
+    "stage": "typecheck",
+    "command": [
+      "npm",
+      "run",
+      "typecheck"
+    ],
+    "exit_code": 0,
+    "seconds": 15.38580796899987
+  },
+  {
+    "stage": "lint",
+    "command": [
+      "npm",
+      "run",
+      "lint"
+    ],
+    "exit_code": 0,
+    "seconds": 15.032811707000292
+  },
+  {
+    "stage": "test",
+    "command": [
+      "npm",
+      "run",
+      "test"
+    ],
+    "exit_code": 0,
+    "seconds": 66.93607557299947
+  },
+  {
+    "stage": "build",
+    "command": [
+      "npm",
+      "run",
+      "build"
+    ],
+    "exit_code": 0,
+    "seconds": 3.4487616090009396
+  }
+]

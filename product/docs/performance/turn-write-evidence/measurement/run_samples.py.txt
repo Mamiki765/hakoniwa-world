@@ -1,0 +1,86 @@
+from pathlib import Path
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+
+from compare_samples import comparison, load
+
+ROOT = Path(__file__).parent
+CONTAINERS = {
+    'main': 'perf-write-php-base-20261031',
+    'writer': 'perf-write-php-340-20261031',
+    'audit': 'perf-write-php-audit-20261031',
+}
+CONTAINER_ROOT = '/evidence/measurement'
+ENV = {key: value for key, value in os.environ.items()
+       if key not in ['DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_TLS', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH']}
+DOCKER = ['docker', '--host=unix:///var/run/docker.sock']
+
+def run(variant, fixture, round_no):
+    label = f'{variant}-{fixture}-r{round_no}'
+    target = ROOT / (label + '.json')
+    if target.exists():
+        raise RuntimeError(f'Refusing to overwrite evidence: {target}')
+    cmd = DOCKER + ['exec',
+        '--env', 'TURN_WRITE_FIXTURE=' + fixture,
+        '--env', 'TURN_AUDIT_LABEL=' + label,
+        '--env', 'TURN_AUDIT_OUTPUT=' + CONTAINER_ROOT + '/' + label + '.json',
+        '--env', 'REPORT_TURN_RUNTIME_PERFORMANCE=0',
+        CONTAINERS[variant], 'php', 'vendor/bin/phpunit',
+        '--filter', '^.*::test_selected_fixture_has_complete_state_evidence$',
+        '--log-junit', CONTAINER_ROOT + '/' + label + '.xml',
+        CONTAINER_ROOT + '/TurnWriteSnapshotTest.php']
+    print(json.dumps({'event': 'start', 'label': label, 'utc_epoch': time.time()}), flush=True)
+    with (ROOT / (label + '.log')).open('w') as handle:
+        result = subprocess.run(cmd, stdout=handle, stderr=subprocess.STDOUT, env=ENV)
+    if result.returncode != 0:
+        print((ROOT / (label + '.log')).read_text()[-3000:], flush=True)
+        raise RuntimeError(f'{label} PHPUnit exit {result.returncode}; no automatic retry')
+    report = load(target)
+    if report['fixture'] != fixture or report['label'] != label:
+        raise RuntimeError('Evidence identity mismatch')
+    source_anchor = ROOT / f'{variant}-mature-r1.json'
+    if source_anchor.exists() and load(source_anchor)['source_sha256'] != report['source_sha256']:
+        raise RuntimeError(f'{variant} application source changed during the measurement window')
+    baseline = ROOT / f'main-{fixture}-r1.json'
+    if baseline.exists():
+        check = comparison(load(baseline), report)
+        (ROOT / (label + '-check.json')).write_text(json.dumps(check, ensure_ascii=False, indent=2) + '\n')
+        if not check['passed']:
+            print(json.dumps(check, ensure_ascii=False, indent=2), flush=True)
+            raise RuntimeError(f'{label} state/seed/metric/dependency comparison failed; stopping')
+    m = report['measurement']
+    c = m['phases']['process_cells']
+    print(json.dumps({'event': 'pass', 'label': label, 'input_sha256': report['input']['sha256'],
+        'output_sha256': report['output']['sha256'], 'tables': len(report['output']['tables']),
+        'turn_wall_ms': m['total_wall_ms'], 'turn_queries': m['total_queries'],
+        'cell_wall_ms': c['wall_ms'], 'cell_cpu_ms': c['cpu_user_ms'] + c['cpu_system_ms'],
+        'cell_queries': c['queries'], 'cell_query_types': c['query_types']}), flush=True)
+
+def plan():
+    # Latin-square positions; every variant occupies each position once.
+    orders = [['main', 'audit', 'writer'], ['audit', 'writer', 'main'], ['writer', 'main', 'audit']]
+    return [(variant, fixture, round_no)
+        for round_no, order in enumerate(orders, start=1)
+        for fixture in ['mature', 'growth', 'protection']
+        for variant in order]
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('stage', choices=['first-pair', 'remaining', 'plan'])
+    args = parser.parse_args()
+    all_runs = plan()
+    if args.stage == 'plan':
+        print(json.dumps(all_runs, indent=2))
+        sys.exit()
+    first = [('main', 'mature', 1), ('audit', 'mature', 1)]
+    selected = first if args.stage == 'first-pair' else [run for run in all_runs if run not in first]
+    if args.stage == 'remaining':
+        check = comparison(load(ROOT / 'main-mature-r1.json'), load(ROOT / 'audit-mature-r1.json'))
+        if not check['passed']:
+            raise RuntimeError('Initial main/audit comparison is not clear; remaining samples forbidden')
+    for sample in selected:
+        run(*sample)

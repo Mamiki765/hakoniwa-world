@@ -1,0 +1,34 @@
+from pathlib import Path
+from collections import Counter
+import json,xml.etree.ElementTree as ET
+
+root=Path('/workspace/perf-full-combined-20261031')
+meta=json.loads((root/'matrix-run.json').read_text());assert meta['status']=='completed' and meta['passed']
+rows=json.loads((root/'matrix-results.json').read_text());assert sorted(r['index'] for r in rows)==list(range(16))
+assert all(r['passed'] for r in rows)
+plans=[json.loads((root/'matrix'/f'slot{i}-plan.json').read_text()) for i in range(1,5)]
+for p in plans:
+    assert p['scope']=='full' and p['selection_mode']=='scope'
+    assert len(p['discovered'])==163
+assert all(p['shards']==plans[0]['shards'] for p in plans)
+files=[];ids=[];cases=[];profile_count=0
+for row in rows:
+    expected={}
+    for line in (root/'matrix'/f"shard{row['index']+1:02d}-profiles.tsv").read_text().splitlines():
+        profile,path=line.split('\t');expected.setdefault(profile,[]).append(path)
+    assert set(expected)=={p['profile'] for p in row['profiles']}
+    for p in row['profiles']:
+        assert p['exit_code']==0 and p['files']==expected[p['profile']]
+        files+=p['files'];profile_count+=1
+        for case in ET.parse(root/'matrix'/p['junit']).getroot().findall('.//testcase'):
+            ids.append(case.attrib['class']+'::'+case.attrib['name'].replace(' with data set ',''));cases.append(case)
+declared=(root/'declared-identifiers.txt').read_text().splitlines()
+missing=sorted(set(declared)-set(ids));unexpected=sorted(set(ids)-set(declared));duplicates=[name for name,count in Counter(ids).items() if count!=1]
+summary={'tree':'e14d371105d717d3df18aa2fc862deafe2b38dd3','indices':len(rows),'profile_processes':profile_count,'test_files':len(files),'unique_test_files':len(set(files)),'discovered_identifiers':len(declared),'executed_testcases':len(cases),'assertions':sum(int(c.attrib.get('assertions',0)) for c in cases),'failures':sum(c.find('failure') is not None for c in cases),'errors':sum(c.find('error') is not None for c in cases),'skipped':sum(c.find('skipped') is not None for c in cases),'missing':missing,'unexpected':unexpected,'duplicates':duplicates,'seconds':meta['seconds']}
+assert Counter(files)==Counter(plans[0]['discovered'])
+assert not missing and not unexpected and not duplicates
+assert summary['executed_testcases']==len(declared)==1343
+assert summary['failures']==summary['errors']==summary['skipped']==0
+(root/'execution-comparison.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2)+'\n')
+(root/'executed-identifiers.txt').write_text('\n'.join(sorted(ids))+'\n')
+print(json.dumps(summary))

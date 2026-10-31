@@ -1,0 +1,1086 @@
+{
+  "sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "files": [
+    {
+      "path": "product/app/Application/AdminOperationsService.php",
+      "sha256": "b30051a9cf24ebf680cf386dd060381a3c756d3115f93df55cc503618530b81f",
+      "lines": 401,
+      "public_methods": 7,
+      "query_sites": 26,
+      "iteration_sites": 8
+    },
+    {
+      "path": "product/app/Application/AnnouncementAdminAuthorizer.php",
+      "sha256": "de22109a7ba6a712d9fcdb2dff21a5130f1e36f6caa55df959a37b589d79fd4a",
+      "lines": 26,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/AnnouncementBodyRenderer.php",
+      "sha256": "3852e28d84543f927d6939b1ef4741e3d8d1b29dbca5b01a4c6ef455e9b093b3",
+      "lines": 18,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/AuthIdentityService.php",
+      "sha256": "f4128ea08a3bf9e4e42594ce3f534af7788e2db06838ec96dfb109e60ce8de9a",
+      "lines": 83,
+      "public_methods": 2,
+      "query_sites": 5,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/BoostScheduleService.php",
+      "sha256": "28db3009039502ecc1cfa376237d47fc6c1467f913a2ec3fc0448661940b167a",
+      "lines": 264,
+      "public_methods": 7,
+      "query_sites": 12,
+      "iteration_sites": 3
+    },
+    {
+      "path": "product/app/Application/CapitalPlacementService.php",
+      "sha256": "ff49b7269c3d401eabe17b88cd15afa89a527c1d64253bbab03690f88694a1c2",
+      "lines": 130,
+      "public_methods": 2,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/CollectionBackfill.php",
+      "sha256": "254d24911dc6cbbd7574e493dd513267bd14ccadac0361e56f7247f6c3524600",
+      "lines": 237,
+      "public_methods": 3,
+      "query_sites": 12,
+      "iteration_sites": 18
+    },
+    {
+      "path": "product/app/Application/CollectionRegistrar.php",
+      "sha256": "579aea44f2f4bef71dc5d4dc493de7a52d44883993af6cfd7eb0503e0872e7ba",
+      "lines": 82,
+      "public_methods": 3,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/CompensationWarehouseService.php",
+      "sha256": "e8416297b822b5d3b2a9c6564be2ff9a93571c6b1c27f092a431648482901484",
+      "lines": 505,
+      "public_methods": 6,
+      "query_sites": 24,
+      "iteration_sites": 3
+    },
+    {
+      "path": "product/app/Application/CurrentCatalogInstaller.php",
+      "sha256": "8d22d67aba7c32b3f4d339161496633154b2de70e9018330ac67e149cf6e2229",
+      "lines": 181,
+      "public_methods": 2,
+      "query_sites": 4,
+      "iteration_sites": 7
+    },
+    {
+      "path": "product/app/Application/CurrentDatabaseBaseline.php",
+      "sha256": "edfc3b8cd8a88cd6d536f546bb80a7751e8e62adbbb43f7290f642574b79899a",
+      "lines": 385,
+      "public_methods": 4,
+      "query_sites": 6,
+      "iteration_sites": 13
+    },
+    {
+      "path": "product/app/Application/DailyLoginRewardService.php",
+      "sha256": "d427eefaeaf42883428c73a978feb3e78c82ab602a3307a912e8296dd4898a32",
+      "lines": 109,
+      "public_methods": 2,
+      "query_sites": 6,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/DailyQuestService.php",
+      "sha256": "17a89c318a4dc909560a8ca52152ef5b0ed164da92f48bfe0e846fb3230767df",
+      "lines": 202,
+      "public_methods": 6,
+      "query_sites": 4,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/InquiryPresenter.php",
+      "sha256": "c715fef96ad700704d6dbd2ca91d2961ee9c468fd3635f96990420d780812bac",
+      "lines": 60,
+      "public_methods": 4,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/InquirySubmissionService.php",
+      "sha256": "40b700476cd657acbc40d8f12330867e27958ca6df789a2f18a54c49d3439294",
+      "lines": 102,
+      "public_methods": 2,
+      "query_sites": 5,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/ManualNationDormancyService.php",
+      "sha256": "bfc419c50a86dae2185a5a6444ab4a7408e9025aeddcc7e5b1b68757c492abe4",
+      "lines": 97,
+      "public_methods": 2,
+      "query_sites": 5,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/MapChunkService.php",
+      "sha256": "1fb453d54cf37812628ea2554434899e7a3365dc1e6d1fc726438c33095094a7",
+      "lines": 151,
+      "public_methods": 2,
+      "query_sites": 4,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/MapSpaceCoveragePreflight.php",
+      "sha256": "ce07639c2273b8d88a5adeb8b12c16b76d7db234bb02fc0c4e764bbfd1808084",
+      "lines": 28,
+      "public_methods": 2,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/MessageBoardAuditRecorder.php",
+      "sha256": "e01afb04b57d9b6cf8ec362ac46fb1cc544ba095deb791b607e6a9511ae63860",
+      "lines": 49,
+      "public_methods": 1,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/MessageBoardService.php",
+      "sha256": "f9b15e0ff7c2eeb73d79bcd8220482f19fe61e52950874c6c34a6c9db076ad9a",
+      "lines": 417,
+      "public_methods": 4,
+      "query_sites": 15,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/ModerationRecordService.php",
+      "sha256": "bd368c0a800ece671f1d4a30f3904505e74850adb6cb4ef5c91fd15d6c254035",
+      "lines": 108,
+      "public_methods": 1,
+      "query_sites": 4,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Application/NationAbandonmentService.php",
+      "sha256": "a93fc49f8b044fb4e25c1970e8536743a480920a42c97a30dab7545ca551a269",
+      "lines": 162,
+      "public_methods": 3,
+      "query_sites": 7,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/NationBasicStatusProjection.php",
+      "sha256": "3bdb871aca5af2729b3efebae24273de1343c2c85cc2959068d7680cd417e22a",
+      "lines": 203,
+      "public_methods": 3,
+      "query_sites": 4,
+      "iteration_sites": 3
+    },
+    {
+      "path": "product/app/Application/NationCreationService.php",
+      "sha256": "940582019757cdfa3952e326ff0bf0e5ae712dbd8261b04736d63ff324caffac",
+      "lines": 397,
+      "public_methods": 2,
+      "query_sites": 20,
+      "iteration_sites": 4
+    },
+    {
+      "path": "product/app/Application/NationProfileService.php",
+      "sha256": "1a39c0abb8941058789249ff35c7221b8370045f6ffcdccdb1c03c60d25183ac",
+      "lines": 100,
+      "public_methods": 2,
+      "query_sites": 4,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Application/NationResourceForecastProjection.php",
+      "sha256": "a8d16d8f5e95498e9e9a780bc1a7e9ab1eb2e1051ecb518c66ebf4a612e3b886",
+      "lines": 451,
+      "public_methods": 2,
+      "query_sites": 3,
+      "iteration_sites": 7
+    },
+    {
+      "path": "product/app/Application/OceanWorldGenerator.php",
+      "sha256": "977b0a16d718e9b913b84eab36de1aebaac1669bc80f48953120c022629b7e23",
+      "lines": 176,
+      "public_methods": 2,
+      "query_sites": 10,
+      "iteration_sites": 4
+    },
+    {
+      "path": "product/app/Application/OilDiscoveryExperienceBackfill.php",
+      "sha256": "351d4efe2f12ed24a30a73566239887b0b14fa7d02dc0bc81787066ac573f82e",
+      "lines": 157,
+      "public_methods": 3,
+      "query_sites": 15,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Application/PlayerIslandEventService.php",
+      "sha256": "88f136d1a100d2bbba15e7a1377f887af4a4a3cb0df4b41f31be48ffb5c21400",
+      "lines": 3064,
+      "public_methods": 6,
+      "query_sites": 6,
+      "iteration_sites": 18
+    },
+    {
+      "path": "product/app/Application/PublicRankingAchievementProjection.php",
+      "sha256": "39305d0ce8ca2da091fa3d1f361de428d3bae9da9dfa3878e608f565c2e592a7",
+      "lines": 124,
+      "public_methods": 2,
+      "query_sites": 1,
+      "iteration_sites": 4
+    },
+    {
+      "path": "product/app/Application/PublicWorldService.php",
+      "sha256": "87acf460fa9f0facde25cba2587914d985f2c062973d03a129ea78f2bed6ee4f",
+      "lines": 236,
+      "public_methods": 4,
+      "query_sites": 7,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Application/RoutineAuditCompactor.php",
+      "sha256": "58bddf31dbd1bd27eb9c9bcd0f960ed51268ebe83f5fe49f10cf5b73f05834fb",
+      "lines": 513,
+      "public_methods": 2,
+      "query_sites": 11,
+      "iteration_sites": 6
+    },
+    {
+      "path": "product/app/Application/SalePolicyService.php",
+      "sha256": "009ef432b51c5407b3b4427a49cf8bc9f01e0641ce8890d0d9926b20e4d6a59d",
+      "lines": 95,
+      "public_methods": 2,
+      "query_sites": 6,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/SecretaryCollectionService.php",
+      "sha256": "434b8843c746ac964928f4afb44c8c4f7451bf1c7808d4315dd6df76d158f111",
+      "lines": 248,
+      "public_methods": 5,
+      "query_sites": 7,
+      "iteration_sites": 5
+    },
+    {
+      "path": "product/app/Application/SecretaryEquipmentService.php",
+      "sha256": "ee2138db2903c0db56520cc38fc823ce80a7ac4a14466787e39a3a0af6c6d418",
+      "lines": 467,
+      "public_methods": 4,
+      "query_sites": 9,
+      "iteration_sites": 7
+    },
+    {
+      "path": "product/app/Application/SecretaryImageRetentionService.php",
+      "sha256": "cdfa12d3f33738edf0a87e41c29c82541aa6632c4241b108f1e8280e9b2197a1",
+      "lines": 466,
+      "public_methods": 10,
+      "query_sites": 13,
+      "iteration_sites": 6
+    },
+    {
+      "path": "product/app/Application/SecretaryItemPresenter.php",
+      "sha256": "61291b969027a2023cb8cb1c0d567c4e08b5f881db94706f84a135396eb4cc2a",
+      "lines": 90,
+      "public_methods": 2,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/SecretaryItemSaleService.php",
+      "sha256": "43114310e883f02ebd94d32b1828142c0009f7ceec0c140d6c7a96ee5e54f9a9",
+      "lines": 160,
+      "public_methods": 2,
+      "query_sites": 9,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/SecretaryLendingService.php",
+      "sha256": "bfccc5d42ccd12bb2b35a7fc7ae0a7acfc10ddaf3135da1af1ca2996991bd414",
+      "lines": 172,
+      "public_methods": 7,
+      "query_sites": 7,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Application/SecretaryNamingService.php",
+      "sha256": "08eda76a08996d9f3a0fe1be6fbe27c958489d5b0987e7bb6408f5696bdd2eae",
+      "lines": 69,
+      "public_methods": 3,
+      "query_sites": 3,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/SecretaryPresenter.php",
+      "sha256": "f7f7ece039b17d7c1583ef1adbc569e3586401efb212b8d32159720a0c4c6f1c",
+      "lines": 131,
+      "public_methods": 2,
+      "query_sites": 0,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Application/SecretaryProfilePresenter.php",
+      "sha256": "159f5334e71ffae462e72725b118c4e4e67587687f572fb35c23048cbc82d73c",
+      "lines": 332,
+      "public_methods": 8,
+      "query_sites": 0,
+      "iteration_sites": 7
+    },
+    {
+      "path": "product/app/Application/SecretaryProfileService.php",
+      "sha256": "e6797a3249446ab7a43534286123b49ec1704a0c31e435769ad6ea62112542b1",
+      "lines": 295,
+      "public_methods": 7,
+      "query_sites": 7,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/SecretaryService.php",
+      "sha256": "cfcc016c9ef212fe9f9b60707e93faa1131145d030b94ecd5135af1f3e2e6cf2",
+      "lines": 60,
+      "public_methods": 2,
+      "query_sites": 4,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Application/SecretarySynthesisService.php",
+      "sha256": "167767fd85f4a4a1d5584832076428d299ce306d1cdb9d2a53151485a91436fb",
+      "lines": 301,
+      "public_methods": 3,
+      "query_sites": 6,
+      "iteration_sites": 5
+    },
+    {
+      "path": "product/app/Application/SecretaryTicketGachaService.php",
+      "sha256": "41c0ac6d1d0f9fecd245537f5b550e894ff6bf07eb36b90710b7d93b42d361eb",
+      "lines": 202,
+      "public_methods": 3,
+      "query_sites": 6,
+      "iteration_sites": 3
+    },
+    {
+      "path": "product/app/Application/SecretaryUndergroundStatusPresenter.php",
+      "sha256": "e313db96a2212415a3a738632bfe2b4abe9bf7cb928e5f6c188bc4392026b3c6",
+      "lines": 51,
+      "public_methods": 2,
+      "query_sites": 1,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Application/SecretaryWarehouseService.php",
+      "sha256": "4350da9385d79be3bf8d5af3c6801686b1546c6636b93d18dcb2b88b92b770b9",
+      "lines": 83,
+      "public_methods": 3,
+      "query_sites": 3,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/SurfaceShipCourseService.php",
+      "sha256": "cf8d52b5a0e43369d3186856975ddf88f2013f8fbcbbfefb73e06568c1bd7a81",
+      "lines": 175,
+      "public_methods": 3,
+      "query_sites": 9,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/SurfaceShipNameService.php",
+      "sha256": "cc410fca1fa598a63ebafcc6336d6e866a343914bcb70800514ae695c55c4be4",
+      "lines": 77,
+      "public_methods": 2,
+      "query_sites": 5,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/SurfaceVisibilityService.php",
+      "sha256": "c11c2faac518f91872deb016b513471ff1d78c25d9887fbb8a067c094cfe2f50",
+      "lines": 82,
+      "public_methods": 2,
+      "query_sites": 2,
+      "iteration_sites": 3
+    },
+    {
+      "path": "product/app/Application/TradingPostService.php",
+      "sha256": "79da84c01de7f22057b9273f8417ce5393e5bc0dce613c872af279c7ee0ad060",
+      "lines": 632,
+      "public_methods": 6,
+      "query_sites": 28,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Application/Underground/GuideConversationService.php",
+      "sha256": "b049220cdfe22cd7b74339e7d5402237e65c6756a2906fbcea368fde5768388f",
+      "lines": 204,
+      "public_methods": 5,
+      "query_sites": 9,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Application/Underground/GuideConversationUnlockCatalog.php",
+      "sha256": "d00938fe7389687ad446361bf1f43ad160c26158417181cb1c44b1b28991aa63",
+      "lines": 41,
+      "public_methods": 3,
+      "query_sites": 0,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Application/Underground/UndergroundBattleHistoryCompactor.php",
+      "sha256": "96db43dcc980b6bad0d82a9426100940490902c51005cbb8e421b95074688394",
+      "lines": 376,
+      "public_methods": 3,
+      "query_sites": 7,
+      "iteration_sites": 10
+    },
+    {
+      "path": "product/app/Application/Underground/UndergroundJournalService.php",
+      "sha256": "e174675d3ad079dc371363c21d97ab6f29c8f20b6462cc665322c5028ea33740",
+      "lines": 205,
+      "public_methods": 2,
+      "query_sites": 7,
+      "iteration_sites": 13
+    },
+    {
+      "path": "product/app/Application/Underground/UndergroundLifetimeStatistics.php",
+      "sha256": "9959f82407a013e048d575a7f3a31a89b7edf5f9d15efea8fc3bbf2acdac436c",
+      "lines": 162,
+      "public_methods": 3,
+      "query_sites": 2,
+      "iteration_sites": 13
+    },
+    {
+      "path": "product/app/Application/Underground/UndergroundMarketService.php",
+      "sha256": "1001e4bba9e108eb04b9c7da4e7f41d3eccb21e5bd0b461a9dc75720b1be053e",
+      "lines": 391,
+      "public_methods": 11,
+      "query_sites": 28,
+      "iteration_sites": 5
+    },
+    {
+      "path": "product/app/Application/Underground/UndergroundReceiptPurgeService.php",
+      "sha256": "61ea5a59ff1b0f454220159bc7aa29f26f0f75e61d8844ee7abbc591b788a8ce",
+      "lines": 195,
+      "public_methods": 2,
+      "query_sites": 16,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Application/Underground/UndergroundReceiptRollupService.php",
+      "sha256": "2f708d5f89a737b55a56ca52da9658ccf3803ff49ab89abf5aa84e26cc59544a",
+      "lines": 362,
+      "public_methods": 9,
+      "query_sites": 14,
+      "iteration_sites": 5
+    },
+    {
+      "path": "product/app/Application/Underground/UndergroundReportSourceIdentity.php",
+      "sha256": "b99134d3c59cfa299854a42a9ba4e2b9beee5e432ebd0686cde1dbc4caf55a1f",
+      "lines": 48,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/Underground/UndergroundRequestAdmission.php",
+      "sha256": "ea69d6d29c632245d043be92f99b5d6e66efe24f4aff83847c811ac179143c44",
+      "lines": 133,
+      "public_methods": 5,
+      "query_sites": 3,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Application/Underground/UndergroundSurfaceMapProjection.php",
+      "sha256": "34d07aff49e973943868bb287a79ca58196a067037917cd5c5b66cc56733dd41",
+      "lines": 138,
+      "public_methods": 3,
+      "query_sites": 6,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Application/UserAchievementService.php",
+      "sha256": "f9edd403ddf573c40067e94d47f7de238e41c0a69c656f0e46747e67e94ad3a2",
+      "lines": 98,
+      "public_methods": 4,
+      "query_sites": 5,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Application/UserMonumentDesignService.php",
+      "sha256": "c8dd6c2f181daf136430984eff4a0c9548434db0cc103378c00bdf064299fd21",
+      "lines": 102,
+      "public_methods": 4,
+      "query_sites": 5,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/VisitorCodeAllocator.php",
+      "sha256": "8fb283796a1c7d83413661530b77ecd9aba2033b61a462a4cbe5df44f3067cfa",
+      "lines": 70,
+      "public_methods": 2,
+      "query_sites": 4,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Application/VisitorCodeGenerator.php",
+      "sha256": "395e003c4eff7dba926de120924f172f8344fa32531af6f50b78caef5f59a983",
+      "lines": 60,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Application/WebImageUploadService.php",
+      "sha256": "b3c298948d8dcf0ae2925cc710f72082065dcf444e3b60c1ced38a3d94fdf0ee",
+      "lines": 30,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Application/WorldExpansionService.php",
+      "sha256": "ddbd9389aca9eb33e063f60eb5ecea6e287df6cf556705c05e10425c327f9e30",
+      "lines": 319,
+      "public_methods": 3,
+      "query_sites": 10,
+      "iteration_sites": 6
+    },
+    {
+      "path": "product/app/Console/Commands/AggregateUndergroundReceipts.php",
+      "sha256": "93ccdd064ca81d09236677b60836da78f3c80dfc334b76701f4185f14f54de9b",
+      "lines": 95,
+      "public_methods": 1,
+      "query_sites": 1,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Console/Commands/BackfillCollections.php",
+      "sha256": "40fd50da5bcaba1a08f85ede524dfe2cc62fba5b961b4a4c6dae73af0891fdbb",
+      "lines": 27,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/BackfillOilDiscoveryExperience.php",
+      "sha256": "aa631ca4fab0209b9b63c3f700e69532a0873989264b32ce75f308f7eea2ed8d",
+      "lines": 37,
+      "public_methods": 1,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/CheckDatabaseBaseline.php",
+      "sha256": "90a93e788e7fab29dd741391f68e80f9b30e8a20187193db4ced93f042784ece",
+      "lines": 29,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/CompactRoutineAuditEvents.php",
+      "sha256": "8f3cd8d5ba380ca4b105ef701310d83cbc47c8cbaee1a71da3946c36ed61135c",
+      "lines": 79,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/CompactUndergroundBattleHistory.php",
+      "sha256": "cfac7e8c5afb20d9924c5eaf59743c7e3fbc2c7821ecd0612f22b18b348a1f05",
+      "lines": 88,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/CompensateTurn.php",
+      "sha256": "126ef27bedc37019f55a22246848bdaae806cbda082540b05fc6e2fe2e902fe8",
+      "lines": 42,
+      "public_methods": 1,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/CreateCompensationGrant.php",
+      "sha256": "6d390b86ee83aaaf96baeea2e04e2d6494233a73afd2fc653d1086464ed6f318",
+      "lines": 109,
+      "public_methods": 1,
+      "query_sites": 2,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/ExpandWorld.php",
+      "sha256": "d593836b24b83b124e03472225dd9c09f470e7cf7f4bc7ed64d8d23d049a48b0",
+      "lines": 367,
+      "public_methods": 1,
+      "query_sites": 4,
+      "iteration_sites": 7
+    },
+    {
+      "path": "product/app/Console/Commands/InitializeTurnSchedule.php",
+      "sha256": "64f1b744eea4ef46bf16fbefbdf9cc73d063c8067dfd9cd27e8c165505693581",
+      "lines": 61,
+      "public_methods": 1,
+      "query_sites": 2,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/InitializeWorld.php",
+      "sha256": "87dc241a739bc88e0970434ba23e37c2dfd19cecb55c318d6e3b7f176380293a",
+      "lines": 55,
+      "public_methods": 1,
+      "query_sites": 2,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/PruneUndergroundBattleLogs.php",
+      "sha256": "7db50aac047d213b003d5e8de47b78979615d7b6be648706ce95916425d6df29",
+      "lines": 53,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/PurgeUndergroundReceipts.php",
+      "sha256": "c8684814b097384965cdf92f5dc6a4b18c46e28457ee6dc5ccb5753962bff19b",
+      "lines": 75,
+      "public_methods": 1,
+      "query_sites": 1,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Console/Commands/RecordModeration.php",
+      "sha256": "61dbbab3fff09c0c8e7c3b2a308ff328ac4db15a8ae78b5a7c021010f0f2a9f0",
+      "lines": 64,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/ReleasePreflight.php",
+      "sha256": "2499e5b55766ea887b4a8d7e24136ea50f83481226f2afa84337e9707c394de5",
+      "lines": 55,
+      "public_methods": 1,
+      "query_sites": 2,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/ReportUndergroundStatistics.php",
+      "sha256": "450f9ac9b7bb3c3b7b743a3b494a2cb7758286a76b84e60d727196b865b3fa3f",
+      "lines": 368,
+      "public_methods": 1,
+      "query_sites": 2,
+      "iteration_sites": 6
+    },
+    {
+      "path": "product/app/Console/Commands/ResetWorld.php",
+      "sha256": "e25ae4970f8941e48746d3fa6d2367404f5dc3536b768bed2b88f878ac3a7ce8",
+      "lines": 290,
+      "public_methods": 1,
+      "query_sites": 45,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/RunTurn.php",
+      "sha256": "b8125d77ade09597a43a76b5141f46ab51794fda92298801b1a4378c27ceb921",
+      "lines": 77,
+      "public_methods": 1,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/SeedMonsterAwardCycle.php",
+      "sha256": "977fe3b0b16fe7e78502f61a9d6927aced64fe7e4fccec9f8fe9a68811c6f1c5",
+      "lines": 172,
+      "public_methods": 1,
+      "query_sites": 9,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/SyncMariaAchievements.php",
+      "sha256": "e240967967d23a43037f18dd12c4659e63a58d34f0ce3a30e15176b4f62f3b69",
+      "lines": 54,
+      "public_methods": 1,
+      "query_sites": 3,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Console/Commands/TurnStatus.php",
+      "sha256": "a4bc2b8b2a638483554def861d634eaeba9c3e6c518a797d8ab0ca9a8e04fec5",
+      "lines": 49,
+      "public_methods": 1,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/UndergroundBalance.php",
+      "sha256": "f2ff896083964a780cda60b5bf2df86402d1d01396b49c9b92b47385d084ce99",
+      "lines": 193,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Console/Commands/ValidateRuleset.php",
+      "sha256": "e941d78ee667ba20d545f7e15f43d9e00324280403e880572356323b9c3bf273",
+      "lines": 56,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/AdminGuideConversationTopicController.php",
+      "sha256": "d6e89df8b4c9a150ae75a435ebb7a80146e2bb8d90a53e19b58779bf5c890c51",
+      "lines": 71,
+      "public_methods": 4,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/AdminInquiryController.php",
+      "sha256": "a2ca6e68edcfa7afa6e91e95468d6330f93e38c546fc1c9d4377d755533472ec",
+      "lines": 54,
+      "public_methods": 3,
+      "query_sites": 2,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/AdminOperationsController.php",
+      "sha256": "75cc6f4d4d79a5c72e35b2139c1026f26f4577110fe3eb6ec8e7906e2e6688d7",
+      "lines": 103,
+      "public_methods": 6,
+      "query_sites": 0,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/AnnouncementController.php",
+      "sha256": "da3dfc48c67f092343daf6effbe8e32dd26bf0c8409f9b935fdf0b2834924a1f",
+      "lines": 88,
+      "public_methods": 7,
+      "query_sites": 2,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/ApiController.php",
+      "sha256": "4aa5f9cc0b27d155aa014b0f76c040e08b012c81bbe8fbad9d26ab600dec478a",
+      "lines": 132,
+      "public_methods": 7,
+      "query_sites": 5,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/BoostController.php",
+      "sha256": "29b34be47fc720fce5d78b422e56ae4173bccfa4f7fea23357d82d816eca88e4",
+      "lines": 77,
+      "public_methods": 5,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/CommandQueueController.php",
+      "sha256": "b32ed72ddd1337ae087d01f8dba227edf694e38697a0b7738c028de34965ebc1",
+      "lines": 817,
+      "public_methods": 10,
+      "query_sites": 7,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/CompensationWarehouseController.php",
+      "sha256": "25c8e9842c898bbb9d94acbf05c060da4d17aeb5f2df169ed83c8d596ec2cd79",
+      "lines": 85,
+      "public_methods": 4,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/DailyRewardController.php",
+      "sha256": "08c820ed123d1528c3964bda2e7a2e08e82f66768b5f2011593b1ebcb64698ae",
+      "lines": 28,
+      "public_methods": 3,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/GuideConversationController.php",
+      "sha256": "cd328c52110de2fba18ffeac98994efcfcf43804b296f3d9c73aea4b3e947376",
+      "lines": 59,
+      "public_methods": 3,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/InquiryController.php",
+      "sha256": "be198a057136008853265d559d0291983a0373ddeab120c4fcab94d92dc16678",
+      "lines": 33,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/MerchantConversationTopicController.php",
+      "sha256": "30ab8df7a772959018bcfd8d52b2b2ac6be260064ef57f801d4dcba1716fa7cd",
+      "lines": 66,
+      "public_methods": 5,
+      "query_sites": 2,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/MessageBoardController.php",
+      "sha256": "574772543f2e9c492a52e5b7f7e943f3945c1c7f2cef3ccb7a2e3fd26cd905d7",
+      "lines": 79,
+      "public_methods": 3,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/NationAbandonmentController.php",
+      "sha256": "8fbbfc402b569dc5a893833e49b0127a1c73743af6e32e1076d2d1939b2a320e",
+      "lines": 47,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/NationDormancyController.php",
+      "sha256": "eec0860964dd0b8925e85db45a9542ad1d38f34167eba7321a79218fd68488b3",
+      "lines": 37,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/NationProfileController.php",
+      "sha256": "e8eaa0a4cdae1789377563b3481b83d460c92bc536b9dea8844982f5aba1d406",
+      "lines": 35,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/PlayerEventController.php",
+      "sha256": "51a1cd5252d0eea6ba2119ba32d141d608b1a11648a21f3db9209c1e3314214b",
+      "lines": 41,
+      "public_methods": 1,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/PublicApiController.php",
+      "sha256": "169e71f6a75f4035247d584910622f5d88f5169ba53fc7a0ff61d2e3111dbfdb",
+      "lines": 95,
+      "public_methods": 9,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/SalePolicyController.php",
+      "sha256": "633ac5df720c9887c7440a329945855c238193370d95afcadc7cbebc9e8ea27d",
+      "lines": 102,
+      "public_methods": 2,
+      "query_sites": 3,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/SecretaryCollectionController.php",
+      "sha256": "9176f95e73713a7397d785d16313e1e3d03068b1b4d994b366bf21832cb28049",
+      "lines": 38,
+      "public_methods": 3,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/SecretaryController.php",
+      "sha256": "5d887023a19eec07bb830d8edafe52ff3eb50198f212941656c9c53231acdd11",
+      "lines": 367,
+      "public_methods": 14,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/SecretarySynthesisController.php",
+      "sha256": "d49125326201f60cd5e614a45dad1036bca69f22088fba943ad756900d33ce45",
+      "lines": 51,
+      "public_methods": 2,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/SecretaryTicketGachaController.php",
+      "sha256": "2f049b810810b4ec6bba30fcda819b635be7dea1f6cd91ced6b0216d3382faee",
+      "lines": 37,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/SecretaryWarehouseController.php",
+      "sha256": "c2611f6e1ea5623be06d480c4aed4e3c7d308e489047ac2ad5447aa9ed19b467",
+      "lines": 31,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/SurfaceShipController.php",
+      "sha256": "c97f807bdd6db196cb16802c9f61769efbe9745b459d66f8b8e9b5843c239e60",
+      "lines": 166,
+      "public_methods": 4,
+      "query_sites": 1,
+      "iteration_sites": 2
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/TradingPostController.php",
+      "sha256": "1be8e8894e4d9b92bd8999e91727fe59f48b4275212eda2cf90de80d9d5d5357",
+      "lines": 127,
+      "public_methods": 4,
+      "query_sites": 2,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/UndergroundEquipmentController.php",
+      "sha256": "03941155db34bd5e06d10b58b90872ddc84e5aa5b834f2711007cb3c41019a3d",
+      "lines": 161,
+      "public_methods": 11,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/UndergroundIntroController.php",
+      "sha256": "9a11e2e03634bc9879675dac338d7b451cfefb69ce36e22de5ddfd5f5a47fef8",
+      "lines": 559,
+      "public_methods": 42,
+      "query_sites": 1,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/UndergroundMarketController.php",
+      "sha256": "3491ee09b95da97aeebc6c9ff373a8a83a3ac5395195914d043fba3e81cdb02b",
+      "lines": 83,
+      "public_methods": 8,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/UndergroundRequestAdmissionController.php",
+      "sha256": "dd00815b803692d0f5f724d701809040945ebb06fc32b5985687fc9ca22c25dc",
+      "lines": 39,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Api/UserMonumentDesignController.php",
+      "sha256": "cd3f2e6c44103aa509d1241dfd94866cdba63bca6ebb9c69e6fc1bbaeee8548f",
+      "lines": 27,
+      "public_methods": 2,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/AppController.php",
+      "sha256": "b92242fa877f687ee8844a58c036908f85b1e001fe8d51498c9397933e4d54ee",
+      "lines": 28,
+      "public_methods": 2,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/AssetController.php",
+      "sha256": "7028bb1e82d6f37bd95e8cec604b8819101f7ff8df665fc4f96b0a1e21709b1c",
+      "lines": 25,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Auth/OAuthController.php",
+      "sha256": "aab0931708d3da50fa43f3b6f01ae49ffc9ada3e900bc9ad0b9df6d3cd8a1bad",
+      "lines": 102,
+      "public_methods": 4,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/CommunityGuidelinesController.php",
+      "sha256": "8a8ff995083ec59d09d5a69a790c398832f39994217315ca3320dc6dc26139cf",
+      "lines": 28,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/Controller.php",
+      "sha256": "25d1c1ef8e6cc8a376553faacfba2b07d9dfaee9bdbb84f14f77517580e9deb1",
+      "lines": 9,
+      "public_methods": 0,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Controllers/ManualController.php",
+      "sha256": "58d3b57884a1852b4579ef1544e2c5440ba88736dc62e32a2d6584687697ba7d",
+      "lines": 167,
+      "public_methods": 2,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Resources/AnnouncementResource.php",
+      "sha256": "02a627cd5e9ef5c8d7e7f276f8f0564f24e0992cdcb62bb5828cf196e234978b",
+      "lines": 29,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Resources/MapChunkResource.php",
+      "sha256": "1f809dec4a3546015f6003a49d1ab11171eb6f284109330f69b11f4712533ff1",
+      "lines": 28,
+      "public_methods": 2,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Resources/MapSpaceResource.php",
+      "sha256": "b044846392cdc73708cd054536d629828bbf02a1e9a550c17a77aaa909ce3f3a",
+      "lines": 26,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Resources/MeResource.php",
+      "sha256": "160520654a652e5883ffe46ab9bf80849bc4d6ad1e7cdf2611394a067c60d340",
+      "lines": 39,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    },
+    {
+      "path": "product/app/Http/Resources/NationResource.php",
+      "sha256": "97cb42269552dd70306aac51fc9dc68b4c5f600380cf0dea01d680728d7cd6bc",
+      "lines": 187,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 1
+    },
+    {
+      "path": "product/app/Http/Resources/WorldResource.php",
+      "sha256": "0960983d7126e31d0447cef934f32c67648088c83493b0cc44c48d32545e285e",
+      "lines": 18,
+      "public_methods": 1,
+      "query_sites": 0,
+      "iteration_sites": 0
+    }
+  ],
+  "coverage_rows": 393
+}

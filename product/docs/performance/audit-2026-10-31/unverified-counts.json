@@ -1,0 +1,108 @@
+{
+  "ledger_rows": 1057,
+  "confirmation_axis": {
+    "static_confirmed": 1055,
+    "delegated": 1,
+    "unconfirmed": 1
+  },
+  "result_axis_explicit_unconfirmed": 2,
+  "dynamic_limit_contains_未": 1014,
+  "counts_are_overlapping_ledger_rows_not_independent_paths": true,
+  "db_design_axes": 12,
+  "new_db_design_runtime_measurements": 0,
+  "detail": {
+    "api-db": {
+      "rows": 393,
+      "confirmation": {
+        "確認済み（静的入口・SQL/loop/relation構造）": 393
+      },
+      "result": {
+        "具体的追加候補なし": 286,
+        "改善候補": 32,
+        "別担当の詳細台帳で統合": 75
+      }
+    },
+    "battle": {
+      "rows": 37,
+      "confirmation": {
+        "静的確認済み": 37
+      },
+      "result": {
+        "改善候補": 14,
+        "候補/問題なし": 1,
+        "問題なし（削減未提案）": 2,
+        "既改善・追加候補": 1,
+        "改善候補（API台帳併記）": 1,
+        "問題なし/装備応答候補": 1,
+        "問題なし（単独追加候補なし）": 2,
+        "既改善": 1,
+        "確認済み;command分冊併記": 1,
+        "既改善/問題なし": 2,
+        "改善候補/観測候補": 1,
+        "観測候補": 1,
+        "確認済み;API分冊併記": 1,
+        "問題なし（API詳細担当）": 1,
+        "他分冊へ統合": 3,
+        "問題なし/状態応答候補": 1,
+        "低順位改善余地": 2,
+        "未実行;構造確認済み": 1
+      }
+    },
+    "command": {
+      "rows": 31,
+      "confirmation": {
+        "確認済み": 29,
+        "別担当": 1,
+        "未確認": 1
+      },
+      "result": {
+        "改善候補": 20,
+        "問題なし": 9,
+        "未確認": 2
+      }
+    },
+    "foundation": {
+      "rows": 276,
+      "confirmation": {
+        "構造確認済み": 276
+      },
+      "result": {
+        "問題なし（追加候補なし）": 265,
+        "問題なし（既修正確認）": 2,
+        "改善候補（既報）": 7,
+        "改善候補": 2
+      }
+    },
+    "frontend": {
+      "rows": 80,
+      "confirmation": {
+        "確認済み（静的構造・関連経路）": 80
+      },
+      "result": {
+        "改善候補（条件付き含む）": 7,
+        "具体的追加候補なし": 73
+      }
+    },
+    "supplement": {
+      "rows": 175,
+      "confirmation": {
+        "確認済み（構造・関連呼出の静的照合）": 175
+      },
+      "result": {
+        "具体的追加候補なし/正当性コストを維持": 170,
+        "改善候補（条件付き/低優先含む）": 5
+      }
+    },
+    "turn": {
+      "rows": 65,
+      "confirmation": {
+        "確認済み": 65
+      },
+      "result": {
+        "改善候補": 36,
+        "問題なし": 28,
+        "別担当": 1
+      }
+    }
+  }
+}

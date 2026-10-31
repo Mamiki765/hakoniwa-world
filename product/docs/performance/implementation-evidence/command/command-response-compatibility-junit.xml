@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="Tests\Feature\CommandQueueAndSalePolicyTest" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" tests="7" assertions="105" errors="0" failures="0" skipped="0" time="7.292761">
+    <testcase name="test_bulk_insert_is_deterministic_atomic_and_truncates_the_concatenated_tail" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" line="40" class="Tests\Feature\CommandQueueAndSalePolicyTest" classname="Tests.Feature.CommandQueueAndSalePolicyTest" assertions="24" time="2.223150"/>
+    <testcase name="test_member_can_add_list_reorder_and_cancel_without_executing_commands" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" line="1067" class="Tests\Feature\CommandQueueAndSalePolicyTest" classname="Tests.Feature.CommandQueueAndSalePolicyTest" assertions="26" time="0.839917"/>
+    <testcase name="test_current_duplicate_uses_immutable_cross_version_request_provenance" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" line="1268" class="Tests\Feature\CommandQueueAndSalePolicyTest" classname="Tests.Feature.CommandQueueAndSalePolicyTest" assertions="11" time="1.089402"/>
+    <testcase name="test_command_specific_defaults_and_selector_are_validated_at_registration" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" line="1915" class="Tests\Feature\CommandQueueAndSalePolicyTest" classname="Tests.Feature.CommandQueueAndSalePolicyTest" assertions="12" time="0.780299"/>
+    <testcase name="test_future_preview_follows_prior_same_cell_results_without_requiring_full_simulation" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" line="2030" class="Tests\Feature\CommandQueueAndSalePolicyTest" classname="Tests.Feature.CommandQueueAndSalePolicyTest" assertions="6" time="0.838222"/>
+    <testcase name="test_scuttle_registration_binds_the_selected_ship_id_instead_of_a_stale_coordinate_occupant" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" line="2071" class="Tests\Feature\CommandQueueAndSalePolicyTest" classname="Tests.Feature.CommandQueueAndSalePolicyTest" assertions="7" time="0.719216"/>
+    <testcase name="test_ship_build_is_one_idempotent_selector_command_with_ruleset_pricing" file="/var/www/html/tests/Feature/CommandQueueAndSalePolicyTest.php" line="2318" class="Tests\Feature\CommandQueueAndSalePolicyTest" classname="Tests.Feature.CommandQueueAndSalePolicyTest" assertions="19" time="0.802555"/>
+  </testsuite>
+</testsuites>

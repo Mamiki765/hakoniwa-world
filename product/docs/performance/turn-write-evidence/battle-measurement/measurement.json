@@ -1,0 +1,388 @@
+{
+    "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "catalog_head": "7aa89e1058416da5b7cc3b65b65a7cb3816deb83",
+    "php": "8.5.8",
+    "fixture": "one synthetic open profile; 6 generated slots incl polished IL210 resonance; same frozen time; real IntroService::state",
+    "prototype": "one response-local equipped-row snapshot; canonical method bodies unchanged; no persistent cache",
+    "resolver_sha256": "54764d2bd3887317b43eb1afffe06dfe5dfb3af021fdb79e5e84f7992c674b9c",
+    "pairs": [
+        {
+            "order": [
+                "baseline",
+                "snapshot"
+            ],
+            "results": {
+                "baseline": {
+                    "service_ms": 21.538825,
+                    "process_cpu_ms": 14.748000000000047,
+                    "query_count": 40,
+                    "sql_ms": 9.97,
+                    "equipped_query_count": 3,
+                    "equipped_sql_ms": 1.25,
+                    "methods": {
+                        "definitionForRow": {
+                            "calls": 18,
+                            "inclusive_ms": 1.5086979999999999,
+                            "inclusive_cpu_ms": 1.51299999999992
+                        },
+                        "equippedDefinitions": {
+                            "calls": 2,
+                            "inclusive_ms": 2.4569409999999996,
+                            "inclusive_cpu_ms": 1.788000000000011
+                        },
+                        "combatLoadout": {
+                            "calls": 2,
+                            "inclusive_ms": 2.699424,
+                            "inclusive_cpu_ms": 2.0299999999999727
+                        },
+                        "ratingRequirementBps": {
+                            "calls": 1,
+                            "inclusive_ms": 1.333703,
+                            "inclusive_cpu_ms": 1.0199999999999818
+                        },
+                        "projectOwned": {
+                            "calls": 6,
+                            "inclusive_ms": 1.2515159999999999,
+                            "inclusive_cpu_ms": 1.251999999999839
+                        },
+                        "summary": {
+                            "calls": 1,
+                            "inclusive_ms": 3.696472,
+                            "inclusive_cpu_ms": 2.965000000000032
+                        }
+                    },
+                    "output_hash": "0c61f0792db92d9be3f42bf62e127554fd9dbde4ef2181887dc81f830440a4d8",
+                    "equipped_queries": [
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 0.48,
+                            "equipped": true
+                        },
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 0.44,
+                            "equipped": true
+                        },
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 0.33,
+                            "equipped": true
+                        }
+                    ]
+                },
+                "snapshot": {
+                    "service_ms": 20.885303,
+                    "process_cpu_ms": 14.827999999999975,
+                    "query_count": 38,
+                    "sql_ms": 9.220000000000002,
+                    "equipped_query_count": 1,
+                    "equipped_sql_ms": 0.38,
+                    "methods": {
+                        "definitionForRow": {
+                            "calls": 18,
+                            "inclusive_ms": 1.658541,
+                            "inclusive_cpu_ms": 1.6599999999998545
+                        },
+                        "equippedDefinitions": {
+                            "calls": 2,
+                            "inclusive_ms": 2.020072,
+                            "inclusive_cpu_ms": 1.7600000000001046
+                        },
+                        "combatLoadout": {
+                            "calls": 2,
+                            "inclusive_ms": 2.233696,
+                            "inclusive_cpu_ms": 1.9710000000000036
+                        },
+                        "ratingRequirementBps": {
+                            "calls": 1,
+                            "inclusive_ms": 0.677307,
+                            "inclusive_cpu_ms": 0.6779999999999973
+                        },
+                        "projectOwned": {
+                            "calls": 6,
+                            "inclusive_ms": 1.1721139999999999,
+                            "inclusive_cpu_ms": 1.1720000000000255
+                        },
+                        "summary": {
+                            "calls": 1,
+                            "inclusive_ms": 2.522987,
+                            "inclusive_cpu_ms": 2.266999999999939
+                        }
+                    },
+                    "output_hash": "0c61f0792db92d9be3f42bf62e127554fd9dbde4ef2181887dc81f830440a4d8",
+                    "equipped_queries": [
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 0.38,
+                            "equipped": true
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "order": [
+                "snapshot",
+                "baseline"
+            ],
+            "results": {
+                "snapshot": {
+                    "service_ms": 20.036709,
+                    "process_cpu_ms": 13.350999999999999,
+                    "query_count": 38,
+                    "sql_ms": 9.39,
+                    "equipped_query_count": 1,
+                    "equipped_sql_ms": 0.44,
+                    "methods": {
+                        "definitionForRow": {
+                            "calls": 18,
+                            "inclusive_ms": 1.284443,
+                            "inclusive_cpu_ms": 1.2859999999994898
+                        },
+                        "equippedDefinitions": {
+                            "calls": 2,
+                            "inclusive_ms": 1.618543,
+                            "inclusive_cpu_ms": 1.2960000000000491
+                        },
+                        "combatLoadout": {
+                            "calls": 2,
+                            "inclusive_ms": 1.8266520000000002,
+                            "inclusive_cpu_ms": 1.502999999999929
+                        },
+                        "ratingRequirementBps": {
+                            "calls": 1,
+                            "inclusive_ms": 0.573508,
+                            "inclusive_cpu_ms": 0.5739999999999554
+                        },
+                        "projectOwned": {
+                            "calls": 6,
+                            "inclusive_ms": 1.065078,
+                            "inclusive_cpu_ms": 1.0660000000001446
+                        },
+                        "summary": {
+                            "calls": 1,
+                            "inclusive_ms": 2.311757,
+                            "inclusive_cpu_ms": 2.0430000000000064
+                        }
+                    },
+                    "output_hash": "0c61f0792db92d9be3f42bf62e127554fd9dbde4ef2181887dc81f830440a4d8",
+                    "equipped_queries": [
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 0.44,
+                            "equipped": true
+                        }
+                    ]
+                },
+                "baseline": {
+                    "service_ms": 20.036276,
+                    "process_cpu_ms": 13.748000000000047,
+                    "query_count": 40,
+                    "sql_ms": 9.5,
+                    "equipped_query_count": 3,
+                    "equipped_sql_ms": 1.01,
+                    "methods": {
+                        "definitionForRow": {
+                            "calls": 18,
+                            "inclusive_ms": 1.351928,
+                            "inclusive_cpu_ms": 1.3510000000002265
+                        },
+                        "equippedDefinitions": {
+                            "calls": 2,
+                            "inclusive_ms": 2.0521249999999998,
+                            "inclusive_cpu_ms": 1.5760000000000218
+                        },
+                        "combatLoadout": {
+                            "calls": 2,
+                            "inclusive_ms": 2.3682350000000003,
+                            "inclusive_cpu_ms": 1.893000000000029
+                        },
+                        "ratingRequirementBps": {
+                            "calls": 1,
+                            "inclusive_ms": 1.190782,
+                            "inclusive_cpu_ms": 0.9660000000000082
+                        },
+                        "projectOwned": {
+                            "calls": 6,
+                            "inclusive_ms": 1.076805,
+                            "inclusive_cpu_ms": 1.0769999999999982
+                        },
+                        "summary": {
+                            "calls": 1,
+                            "inclusive_ms": 3.411418,
+                            "inclusive_cpu_ms": 2.7420000000000755
+                        }
+                    },
+                    "output_hash": "0c61f0792db92d9be3f42bf62e127554fd9dbde4ef2181887dc81f830440a4d8",
+                    "equipped_queries": [
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 0.35,
+                            "equipped": true
+                        },
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 0.32,
+                            "equipped": true
+                        },
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 0.34,
+                            "equipped": true
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "order": [
+                "baseline",
+                "snapshot"
+            ],
+            "results": {
+                "baseline": {
+                    "service_ms": 22.001336,
+                    "process_cpu_ms": 14.99899999999991,
+                    "query_count": 40,
+                    "sql_ms": 10.040000000000003,
+                    "equipped_query_count": 3,
+                    "equipped_sql_ms": 1.3499999999999999,
+                    "methods": {
+                        "definitionForRow": {
+                            "calls": 18,
+                            "inclusive_ms": 1.566989,
+                            "inclusive_cpu_ms": 1.5699999999998226
+                        },
+                        "equippedDefinitions": {
+                            "calls": 2,
+                            "inclusive_ms": 2.600669,
+                            "inclusive_cpu_ms": 1.97300000000007
+                        },
+                        "combatLoadout": {
+                            "calls": 2,
+                            "inclusive_ms": 2.827059,
+                            "inclusive_cpu_ms": 2.199000000000069
+                        },
+                        "ratingRequirementBps": {
+                            "calls": 1,
+                            "inclusive_ms": 1.46167,
+                            "inclusive_cpu_ms": 1.1420000000000528
+                        },
+                        "projectOwned": {
+                            "calls": 6,
+                            "inclusive_ms": 1.125873,
+                            "inclusive_cpu_ms": 1.126999999999839
+                        },
+                        "summary": {
+                            "calls": 1,
+                            "inclusive_ms": 3.749337,
+                            "inclusive_cpu_ms": 2.909999999999968
+                        }
+                    },
+                    "output_hash": "0c61f0792db92d9be3f42bf62e127554fd9dbde4ef2181887dc81f830440a4d8",
+                    "equipped_queries": [
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 0.43,
+                            "equipped": true
+                        },
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 0.48,
+                            "equipped": true
+                        },
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 0.44,
+                            "equipped": true
+                        }
+                    ]
+                },
+                "snapshot": {
+                    "service_ms": 22.24454,
+                    "process_cpu_ms": 14.397000000000048,
+                    "query_count": 38,
+                    "sql_ms": 11.29,
+                    "equipped_query_count": 1,
+                    "equipped_sql_ms": 2.1,
+                    "methods": {
+                        "definitionForRow": {
+                            "calls": 18,
+                            "inclusive_ms": 1.2939090000000002,
+                            "inclusive_cpu_ms": 1.2960000000001628
+                        },
+                        "equippedDefinitions": {
+                            "calls": 2,
+                            "inclusive_ms": 3.303679,
+                            "inclusive_cpu_ms": 1.342999999999961
+                        },
+                        "combatLoadout": {
+                            "calls": 2,
+                            "inclusive_ms": 3.514196,
+                            "inclusive_cpu_ms": 1.5529999999999973
+                        },
+                        "ratingRequirementBps": {
+                            "calls": 1,
+                            "inclusive_ms": 0.581628,
+                            "inclusive_cpu_ms": 0.5819999999999936
+                        },
+                        "projectOwned": {
+                            "calls": 6,
+                            "inclusive_ms": 1.105611,
+                            "inclusive_cpu_ms": 1.1059999999999945
+                        },
+                        "summary": {
+                            "calls": 1,
+                            "inclusive_ms": 2.352064,
+                            "inclusive_cpu_ms": 2.0529999999999973
+                        }
+                    },
+                    "output_hash": "0c61f0792db92d9be3f42bf62e127554fd9dbde4ef2181887dc81f830440a4d8",
+                    "equipped_queries": [
+                        {
+                            "sql": "select * from \"underground_owned_equipment\" where \"underground_profile_id\" = ? and \"equipped_slot\" is not null order by \"id\" asc",
+                            "bindings": [
+                                1
+                            ],
+                            "ms": 2.1,
+                            "equipped": true
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}

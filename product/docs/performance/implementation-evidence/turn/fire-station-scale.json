@@ -1,0 +1,46 @@
+{
+    "runtime": "8.5.8",
+    "opcache_cli": "0",
+    "checks_per_round": 20,
+    "profiles": [
+        {
+            "cells": 1024,
+            "timings_ms": {
+                "full_index_sort": [
+                    542.288104,
+                    533.555457,
+                    558.69225
+                ],
+                "coordinate_radius": [
+                    5.710834,
+                    5.361756,
+                    5.53298
+                ]
+            },
+            "candidate_ids": [
+                497,
+                561
+            ]
+        },
+        {
+            "cells": 9216,
+            "timings_ms": {
+                "full_index_sort": [
+                    7429.288835,
+                    7338.250579,
+                    8370.164302
+                ],
+                "coordinate_radius": [
+                    5.280868,
+                    5.523188,
+                    6.777275
+                ]
+            },
+            "candidate_ids": [
+                1457,
+                1649
+            ]
+        }
+    ],
+    "scope": "Actual source index and Eloquent models; synthetic CPU candidate selection only, no SQL\/payment\/fire lottery or whole-turn timing."
+}

@@ -1,0 +1,21 @@
+{
+  "baseline_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+  "writer_pr_head": "8509bd5c3c6666db580c6fda2a9c7ce986316642",
+  "fixture_recipe_source": "product/tests/Feature/TurnRuntimePerformanceTest.php::processCellProfileWorld",
+  "fixture_recipe_sha256": "a5da792d4a9b84bd51546f9f6a5c749a7bb57c84211e2b5cf951462322a11170",
+  "probe_sha256": "1b4c6f6bc9ba738d9be8b52fb48cebb151822e7328b65d07a1c2dcf671100b7c",
+  "previous_probe_sha256": "87e265729f33a78f857d43b1d7eef89fc471152383e841c52a2b625a6afdb279",
+  "only_selected_test_runs": "test_selected_fixture_has_complete_state_evidence",
+  "snapshot_excluded_tables": [
+    "auth_identities",
+    "users",
+    "sessions",
+    "cache",
+    "cache_locks"
+  ],
+  "snapshot_excluded_columns": [
+    "attachment_token"
+  ],
+  "snapshot_additional_exclusion": "turn_runs.phase_results[*].duration_ms",
+  "clock": "2026-10-31 12:00:00 UTC before parent::setUp, held through output capture"
+}
