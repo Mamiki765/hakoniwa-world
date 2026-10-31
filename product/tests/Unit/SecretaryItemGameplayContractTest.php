@@ -16,6 +16,59 @@ use Tests\TestCase;
 
 final class SecretaryItemGameplayContractTest extends TestCase
 {
+    public function test_catalog_results_are_isolated_from_caller_changes(): void
+    {
+        $catalog = new SecretaryItemCatalog;
+        $original = $catalog->definition(SecretaryItemCatalog::RING);
+        $limits = $catalog->categoryLimits();
+        $definitions = $catalog->definitions();
+        $definitions[SecretaryItemCatalog::RING]['max_level']++;
+        unset($definitions[SecretaryItemCatalog::OLD_BOW]);
+        $resolved = $catalog->definitionWithResolvedEconomics(
+            SecretaryItemCatalog::RING,
+            SecretaryItemCatalog::RARITY_CURSED,
+            0,
+        );
+        $resolved['name'] = 'Changed by caller';
+        $changedLimits = $limits;
+        $changedLimits[0]['maximum_equipped']++;
+
+        $this->assertSame($original, $catalog->definition(SecretaryItemCatalog::RING));
+        $this->assertSame($original, (new SecretaryItemCatalog)->definition(SecretaryItemCatalog::RING));
+        $this->assertArrayHasKey(SecretaryItemCatalog::OLD_BOW, $catalog->definitions());
+        $this->assertSame($limits, $catalog->categoryLimits());
+        $this->assertSame(SecretaryItemCatalog::RARITY_CURSED, $resolved['rarity']);
+        $this->assertSame(0, $resolved['fixed_sale_price_money']);
+    }
+
+    public function test_catalog_overrides_remain_live_after_base_catalog_is_read(): void
+    {
+        (new SecretaryItemCatalog)->definitions();
+        $catalog = new class extends SecretaryItemCatalog
+        {
+            public int $maximum = 3;
+
+            public function definitions(): array
+            {
+                $definition = parent::definitions()[SecretaryItemCatalog::RING];
+
+                return [SecretaryItemCatalog::RING => [
+                    ...$definition,
+                    'category' => 'test_category',
+                    'category_label' => 'Test category',
+                    'category_max_equipped' => $this->maximum,
+                ]];
+            }
+        };
+
+        $this->assertSame($catalog->maximum, $catalog->categoryLimits()[0]['maximum_equipped']);
+        $catalog->maximum++;
+        $this->assertSame($catalog->maximum, $catalog->maximumEquipped('test_category'));
+        $this->assertSame($catalog->maximum, $catalog->categoryLimits()[0]['maximum_equipped']);
+        $this->assertSame('test_category', $catalog->definition(SecretaryItemCatalog::RING)['category']);
+        $this->assertNotSame('test_category', (new SecretaryItemCatalog)->definition(SecretaryItemCatalog::RING)['category']);
+    }
+
     public function test_next_generation_retains_item_and_demographic_capabilities(): void
     {
         $current = CurrentRulesetFixture::settings();
