@@ -101,7 +101,7 @@ final class CompleteTurnEngine
             'nation_economy' => $this->nationEconomy($context),
             'resource_sales' => $this->sellResources($context),
             'development_commands' => $this->developmentCommands($context),
-            'process_cells' => $this->processCells($context),
+            'process_cells' => $this->events->duringCellProcessing($context, fn (): array => $this->processCells($context)),
             'settle_deferred_effects' => $this->settleDeferredEffects($context),
             'global_disasters' => $this->disasters->executeGlobal($context),
             'aggregate_nations' => $this->aggregateNations($context),
