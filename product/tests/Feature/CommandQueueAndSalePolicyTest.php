@@ -208,6 +208,16 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.candidate_count', 31)
             ->assertJsonPath('data.queue.explicit_count', 30);
         $items = collect($response->json('data.queue.items'));
+        $this->assertDatabaseHas('nation_command_queue_bulk_requests', [
+            'request_key' => $requestKey,
+            'candidate_count' => 31,
+            'inserted_count' => 30,
+            'truncated_count' => 1,
+        ]);
+        $audit = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'command.bulk_inserted')->value('metadata'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $audit['truncated_count']);
+        $this->assertSame(0, NationCommandQueueItem::query()->where('status', 'cancelled')->count());
         $this->assertSame(range(1, 30), $items->pluck('queue_position')->all());
         $this->assertSame(
             $targets->take(30)->map(fn (MapCell $cell): array => [(int) $cell->x, (int) $cell->y])->all(),

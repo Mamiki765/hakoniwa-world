@@ -1,0 +1,50 @@
+{
+    "base_sha": "2e93ec918774ad64d787aba99fc59a7bc3e54d16",
+    "php": "8.5.8",
+    "fixture": {
+        "candidate_count": 10000,
+        "active_items": 0,
+        "queue_limit": 30,
+        "policies": 2,
+        "rounds": 3
+    },
+    "semantic_comparisons": 12,
+    "all_matched": true,
+    "samples": {
+        "before": [
+            {
+                "elapsed_ms": 28.940997,
+                "retained_memory_delta_bytes": 8055488,
+                "discarded_generated_wrappers": 19940
+            },
+            {
+                "elapsed_ms": 4.075759,
+                "retained_memory_delta_bytes": 8055488,
+                "discarded_generated_wrappers": 19940
+            },
+            {
+                "elapsed_ms": 1.557599,
+                "retained_memory_delta_bytes": 8055488,
+                "discarded_generated_wrappers": 19940
+            }
+        ],
+        "after": [
+            {
+                "elapsed_ms": 0.032403,
+                "retained_memory_delta_bytes": 25456,
+                "discarded_generated_wrappers": 0
+            },
+            {
+                "elapsed_ms": 0.029081,
+                "retained_memory_delta_bytes": 25456,
+                "discarded_generated_wrappers": 0
+            },
+            {
+                "elapsed_ms": 0.028922,
+                "retained_memory_delta_bytes": 25456,
+                "discarded_generated_wrappers": 0
+            }
+        ]
+    },
+    "limits": "Pure private planning method only; candidate allocation, map scan, validation, snapshot, ORM, SQL and HTTP excluded. Shared host, no production speedup prediction."
+}

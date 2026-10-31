@@ -959,7 +959,7 @@ final class CommandQueueService
 
             $plan = $plans[$overflowPolicy];
             $kept = $plan['kept'];
-            $dropped = $plan['dropped'];
+            $cancelled = $plan['cancelled'];
             $this->assertNoNewDangerousOverbuildEffects(
                 $queue,
                 $activeItems,
@@ -998,15 +998,13 @@ final class CommandQueueService
                 ]);
                 $insertedCount++;
             }
-            foreach ($dropped as $entry) {
-                if (isset($entry['existing'])) {
-                    $entry['existing']->update([
-                        'status' => 'cancelled',
-                        'queue_position' => null,
-                        'cancelled_at' => now(),
-                    ]);
-                    $this->audit($user, 'command.cancelled', $entry['existing'], ['reason' => 'bulk_tail_truncated']);
-                }
+            foreach ($cancelled as $item) {
+                $item->update([
+                    'status' => 'cancelled',
+                    'queue_position' => null,
+                    'cancelled_at' => now(),
+                ]);
+                $this->audit($user, 'command.cancelled', $item, ['reason' => 'bulk_tail_truncated']);
             }
             $queue->increment('version');
             $queue->refresh();
@@ -1015,7 +1013,7 @@ final class CommandQueueService
                 'position' => $position,
                 'candidate_count' => count($candidates),
                 'inserted_count' => $insertedCount,
-                'truncated_count' => count($dropped),
+                'truncated_count' => $plan['truncated_count'],
             ]);
             $this->recordBulkRequest(
                 $queue,
@@ -1024,14 +1022,14 @@ final class CommandQueueService
                 $position,
                 count($candidates),
                 $insertedCount,
-                count($dropped),
+                $plan['truncated_count'],
                 $requestFingerprint,
             );
 
             return [
                 'queue' => $queue,
                 'inserted_count' => $insertedCount,
-                'truncated_count' => count($dropped),
+                'truncated_count' => $plan['truncated_count'],
                 'candidate_count' => count($candidates),
                 'cancelled_count' => $plan['cancelled_count'],
                 'skipped_count' => $plan['skipped_count'],
@@ -1056,17 +1054,20 @@ final class CommandQueueService
         $inserted = min(count($candidates), $capacity);
         $inserted -= $inserted % $groupSize;
         $suffixCount = max(0, $limit - count($prefix) - $inserted);
+        $cancelled = array_slice($suffix, $suffixCount);
         $existing = static fn (NationCommandQueueItem $item): array => ['existing' => $item];
         $generated = static fn (array $candidate): array => ['generated' => $candidate];
 
         return [
             'kept' => [...array_map($existing, $prefix), ...array_map($generated, array_slice($candidates, 0, $inserted)), ...array_map($existing, array_slice($suffix, 0, $suffixCount))],
-            'dropped' => [...array_map($generated, array_slice($candidates, $inserted)), ...array_map($existing, array_slice($suffix, $suffixCount))],
+            // Skipped candidates never become queue items; only their count is needed.
+            'cancelled' => $cancelled,
+            'truncated_count' => count($candidates) - $inserted + count($cancelled),
             'inserted_count' => $inserted, 'skipped_count' => count($candidates) - $inserted,
-            'cancelled_count' => max(0, count($suffix) - $suffixCount),
+            'cancelled_count' => count($cancelled),
             'cancelled_items' => array_map(static fn (NationCommandQueueItem $item): array => [
                 'id' => $item->id, 'queue_position' => (int) $item->queue_position,
-            ], array_slice($suffix, $suffixCount)),
+            ], $cancelled),
         ];
     }
 
