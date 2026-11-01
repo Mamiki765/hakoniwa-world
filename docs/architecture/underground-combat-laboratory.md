@@ -2,7 +2,9 @@
 
 ## Authority and scope
 
-この文書は`secretary-underground-alpha-v0` combat laboratoryから正式runtime、Trial、覚醒、装備、探索、custom AI、およびapplication `3.10.0`のskill rebuild・party rentalまでを扱うcurrent task-specific architecture authorityである。manual combat、unique、enhancement、enchant、market、companion育成は定義しない。
+この文書は`secretary-underground-alpha-v0` combat laboratoryから正式runtime、Trial、覚醒、装備、探索、custom AI、およびapplication `3.10.0`のskill rebuild・party rentalまでの導入と、本文中の個別追補を記録する。各PR節の「current」「未実装」「定義しない」はその導入時点の範囲であり、後続機能の未実装判定には使わない。manual combat、unique、enhancement、enchant、market、companion育成を定義しないという記述も当時のscopeである。
+
+Secretary所有権・pure core・snapshot/settlementの基盤は本書を参照し、現在のcombat identityは[AlphaV1CombatRules](../../product/app/Domain/Underground/Combat/AlphaV1CombatRules.php)、skill/growthと装備identityは[PlayerCatalog](../../product/app/Application/Underground/UndergroundAlphaV1PlayerCatalog.php)と[EquipmentCatalog](../../product/app/Application/Underground/UndergroundEquipmentCatalog.php)から対象HEADの設定を確認する。後続の[装備倍率・rating](../../product/docs/architecture/underground-equipment-scaling.md)、[露店等のAPI](../../product/docs/architecture/market-synthesis-api.md)、[Nation地下施設](../../product/docs/architecture/underground-facility-development.md)、[Receipt・戦闘snapshotの保持整理](../../product/docs/operations/receipt-audit-retention.md)を併せて読む。compact保持と後続の検証済みprefix purgeを分け、コードの存在から本番cron登録・運用開始を推測しない。
 
 ### Party boundary (Owner decision)
 
@@ -16,7 +18,7 @@ Trial 1/2はsoloのままとする。探索のenemy数はcontentごとのparty-s
 
 party battle UIは操作主体の`PARTY`を上段、`ENEMY`を下段へ分離する。compact cardはicon、battle display name、色付きHP、MP current value、覚醒barを表示し、MPの固定上限値と覚醒の内部数値は繰り返し表示しない。覚醒barは満了待機を`Ready`、発動中を`Awaken!`として区別する。iconは1:1、bustとfull bodyは通常・覚醒とも3:4で、覚醒画像がなければ対応する通常画像へfallbackする。各画像の制作方法と権利・creditはslotごとに保存する。
 
-current repository candidate releaseのapplication versionは`3.10.0`、surface Rulesetは`hakoniwa-2s-plus-v25`である。v25はv24の地上契約を保ち、新規島候補を安定順のbounded batchで安全なplanまで評価するbehaviorを追加する。immutable v24は変更しない。Underground laboratory/runtime identityとは別物であり、profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
+application `3.10.0`導入時のcandidate releaseのapplication versionは`3.10.0`、surface Rulesetは`hakoniwa-2s-plus-v25`である。v25はv24の地上契約を保ち、新規島候補を安定順のbounded batchで安全なplanまで評価するbehaviorを追加する。immutable v24は変更しない。Underground laboratory/runtime identityとは別物であり、profile、run、history、intro/growth/skill/equipment/AI stateとpure build snapshotはpublished Ruleset、World、Nation、MapCell、TurnRun、Turn RNGへ依存しない。current combat、exploration、equipment、AI identityと追加contractは本文後半のrelease-specific節を正本とし、過去PR単位の節は各導入時点の境界として読む。
 
 ## Modular-monolith boundary
 
@@ -90,7 +92,7 @@ alpha-v1はpure immutable manifest/snapshot/validator/simulatorであり、DB、
 
 敏捷comboはactionごとに1回だけ2・3・4連続ヒットを抽選し、通常のcritical・variance・防御・guard等を解決したpost-mitigation damageへ最終倍率を掛ける。action、damage event、critical、status、覚醒ゲージ、native multi-hit数は追加せず、native multi-hitにも同じaction単位のcombo結果を使う。logはnative damage行を増やさず、回避または完全防御ではない最初のdamage行に補助表示用hit数を1回だけ持つ。
 
-current combat identityは`secretary-underground-alpha-v5`、skill tree identityは`secretary-underground-skill-tree-alpha-v2`。3.9.3のv4から3.10.0の技能・MP・会心・対象選択・持続回復・蘇生・行動継続へ更新する。`AlphaV1*`と`foundation-v1.json`は既存canonical implementation lineageであり、file名からpersisted identityを推測しない。過去battleの保存済みsummary/detailの再取得は保持し、旧戦闘engineの並行運用や過去勝敗の再計算は行わない。SP移行は3.10.0のforward migrationを正本とする。
+application `3.10.0`時点のcombat identityは`secretary-underground-alpha-v5`、skill tree identityは`secretary-underground-skill-tree-alpha-v2`。3.9.3のv4から3.10.0の技能・MP・会心・対象選択・持続回復・蘇生・行動継続へ更新する。`AlphaV1*`と`foundation-v1.json`は既存canonical implementation lineageであり、file名からpersisted identityを推測しない。過去battleの保存済みsummary/detailの再取得は保持し、旧戦闘engineの並行運用や過去勝敗の再計算は行わない。SP移行は3.10.0のforward migrationを正本とする。
 
 ### MP表示用のログ契約
 

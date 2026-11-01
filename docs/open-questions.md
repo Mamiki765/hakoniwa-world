@@ -296,13 +296,14 @@
 - Status: Decided
 - Implemented: Yes; application `3.4.0`。current authenticated User自身のSecretary画面からだけ入れるserver-authoritative finite-state intro、通常探索、growth settlement、status/STP、有限SP、戦技・護身・祝福Skill Tree、Trial 1・覚醒、正式equipment、装備Shop、アクセサリー3枠、500枠宝物庫、浅層と黒晶洞のgenerated drop、案内人の部屋と複合再振り、条件指定型の宝物庫まとめ売り、custom AIを実装済み。Tutorial rewardはXP +5 / 欠片0で一度だけ、scripted lossはprogression/economyへ影響しない。開発環境の「力試し（α）」も報酬なしとし、productionではmain payloadとplaytest APIの双方を閉じる。通常探索、Trial、取得済みactive/passive、実際の装備instanceはcanonical pure core/modelとPR103 battle historyを再利用する。
 - Decided backend portion: defeatは輝石の欠片を`floor(balance / 2)`まで減らしてrunを終了する。trialのdefeatまたはbattle後の明示的な帰還は次回battle 1へresetするが、既に解禁したtrialは失わない。browser close/logoutはtrialの戦闘間progressを保持する。各trialは固有の明示的`content_identity`を持ち、active runは開始時のidentityを保存する。同じtrial自身のgameplay content identityだけが変わった場合、次回access時にそのrunをcurrent identity / battle 1へ無penaltyでresetする。application/runtime versionや別trialのidentity変更ではresetせず、XP、欠片、trial unlock、first clear、`unlocked_area_layers`を保持する。trialのfirst clearだけが`unlocked_area_layers`を1増やし、capacityは1 layer = 4 slotsから派生し、次のtrialをsequentialにunlockする。同じtrialの再clearでlayerを重複取得しない。battle詳細action logは終了から1時間保持し、履歴一覧は最新20件のcompact summaryだけを取得する。期限後も`underground_battles`のcompact summaryとidempotency/audit identityは保持し、個別詳細は安全な期限切れ案内へ劣化する。player-facing playtest logはsettlement時の自己完結projectionを保存し、current catalogへ再依存しない。
+- Retention amendment (4.4.0以降): 上のcompact summary/identity保持は3.x導入時の詳細log期限との比較である。後続D4では、恒久集計・検証済みでpinや進行中処理のない連続prefixだけを明示purgeできる。現行command・保護条件は[保持整理runbook](../product/docs/operations/receipt-audit-retention.md)を確認する。30日保持境界とcronの実行周期・実登録は別であり、本番稼働はこの文書から確定しない。
 - Application `3.3.0` respec contract: 案内人の部屋から、SP全返却・active slot解除・STP全返却・成長方針再選択を一つのtransactionで行う。費用は現在Combat Lv × 10 Gを手持ち欠片だけから支払い、24時間に1回とする。Lv/XP、装備、Trial clear、覚醒、解禁、intro履歴は維持し、current HPは新max HPを超える場合だけ下方clampする。active Trial中は拒否し、UUID idempotencyとprofile lockで二重決済を防ぐ。
 - Application `4.5.0` respec amendment: 通常の費用である現在Combat Lv × 10 Gと、再振り後24時間の待ち時間は維持する。待ち時間中は追加で10Pdを支払うと再振りでき、待ち時間が終了していればPdを消費しない。active Trial中の拒否、profile lock、UUID idempotencyは同じ契約を適用し、G・Pd・再振りを一つのtransactionで確定する（Ownerの2026-09-27指示）。
 - Equipment capacity amendment: 上の500枠は基本容量。通常装備の宝物庫は増築(1)で+100の600枠、別の共鳴結晶庫は基本50枠から+50の100枠となる。`UndergroundEquipmentCatalog::vaultCapacityForProfile()`が購入済み拡張を反映し、露店も同じ保管上限を使う。地上アイテム倉庫の最大250枠とは別。
 - Application `4.5.0` Trial 3 first-clear equipment: エクスカリバーは宝物庫が満杯でも初回クリア時に一度だけ即時付与する。この確定報酬に限り通常の保管上限を1枠超えてよい。通常の装備ドロップは確定報酬付与後の空き枠で判定し、満杯なら従来どおり`vault_full`とする（Ownerの2026-09-27決定）。
 - Application `3.3.0` bulk sale contract: 宝物庫のItem Lv・rarity・category・canonical weapon style条件をserver側で解決し、装備中itemと通常売却不可itemを除外した具体的item集合とcanonical価格をpreviewする。confirmはpreviewしたIDと価格だけを再検証し、追加取得itemを含めず、全件validation後の同一transactionでdeleteと手持ち欠片creditを行う。UUID idempotencyとprofile lockでretry・concurrent requestの二重creditを防ぐ。
 - Application `3.4.0` custom AI contract: Secretaryごとに有効設定は1つ、`null`はdefault preset、`[]`はcustom empty、最大16 rules・各rule最大2 AND条件、empty conditionはalways、jumpはforward-onlyとする。成立actionが現在使用不能なら次ruleへ進み、全rule後だけcanonicalな習得済みattackから通常攻撃へdeterministic fallbackする。覚醒は通常actionを消費せずdefault presetのHP 20%条件から起動する。Trial中の変更はbattle間だけ許可し、battle snapshotへ実使用normalized rules全文とSHA-256を固定する。Underground combat identityは`secretary-underground-alpha-v3`、Surface Rulesetは`hakoniwa-2s-plus-v19`を維持する。
-- Remaining boundary: Trial 3以降、unique、enhancement、enchant、manual combat、companion、marketはcustom AI scopeへ含めない。production deploy / migrationは別Owner gateとする。
+- Remaining boundary: 上記3.4.0のcustom AI導入時には、Trial 3以降、unique、enhancement、enchant、manual combat、companion、marketをそのscopeに含めなかった。現在の採用範囲は後続の装備倍率設計、UG-05と露店API等を確認し、この旧scope外一覧から未実装と判定しない。production deploy / migrationは別Owner gateとする。
 - Decision record: `docs/roadmap/3.0.0-alpha-underground.md`（履歴案内）、`docs/architecture/underground-combat-laboratory.md`
 
 ### UG-04 Nation-owned facility・surface bridge
@@ -371,21 +372,22 @@
 ### AWARD-01 Nation awards
 
 - Status: Decided
-- Decision: owner提示のver 1.3.0条件表を正本とし、災難50,000/100,000/200,000人純減、繁栄300,000/500,000/1,000,000人最終人口、平和20,000/50,000/80,000人実受入とする。各系列は下位から1 turn 1段階、一度限りで取消なし。100 turnごとの人口最大全Nationへturn賞、同区間のNation attributed final blow最大全Nationへ最大0を除き討伐turn賞を反復付与する。公開TOPだけへ全受賞turn、種類別永久討伐count、stable source kind由来markを表示する。pre-1.3.0の周期countはmigrationが固定した全要求Nationへのexplicit operator seedだけとし、完了までnon-dry turnと周期順位をfail closedにする。award backfillは行わず、gameplay bonusもない。
+- Decision: owner提示のver 1.3.0条件表を正本とし、災難50,000/100,000/200,000人純減、繁栄300,000/500,000/1,000,000人最終人口、平和20,000/50,000/80,000人実受入とする。各系列は下位から1 turn 1段階、一度限りで取消なし。100 turnごとの人口最大全Nationへturn賞、同区間のNation attributed final blow最大全Nationへ最大0を除き討伐turn賞を反復付与する。公開TOPだけへ全受賞turn、種類別永久討伐count、後続C3のeffective display order由来markを表示する（historical nullだけ監査済みsource kindのfallback）。pre-1.3.0の周期countはmigrationが固定した全要求Nationへのexplicit operator seedだけとし、完了までnon-dry turnと周期順位をfail closedにする。award backfillは行わず、gameplay bonusもない。
 - Implemented: ver 1.3.0
 - Decision record: `docs/decisions/ADR-0009-ver-1.3.0-awards-and-classic-top.md`、`product/docs/operations/ver-1.3.0-monster-cycle-seed.md`（履歴案内）
 
 ### B-02 Capitalへの複数被害
 
 - Status: Decided
-- Implemented: Partially; disaster path is implemented, combat path is not.
+- Implemented: 災害と現行ミサイルの人口damage経路は実装済み。Capital operational damageはB-03の別gateを維持する。
 - Decision: 各event開始時点の現在人口へ割合damageを逐次適用し、各event後にfloorとminimum 100を適用する。
+- Current implementation: [MissileImpactResolver](../product/app/Application/MissileImpactResolver.php)の通常着弾・陸地破壊弾と共通`damageCapital()`を参照する。
 - Decision record: `docs/architecture/capital-and-territory.md`、`product/docs/disaster-oil-audit-pr15.md`（履歴案内）
 
 ### B-19 Capitalと怪獣・戦闘damage
 
 - Status: Decided
-- Implemented: Boundary only
+- Implemented: occupancy侵入禁止と現行ミサイルの人口damage経路。全将来combatを実装済みとするものではなく、Capital operational damageはB-03の別gateを維持する。
 - Decision: 怪獣はCapitalへ侵入できない。combat damageでもCapital identityを維持し、荒地化相当10%、一段階掘削相当30%、深海化相当90%を逐次適用する。
 - Decision record: `docs/architecture/capital-and-territory.md`、`product/docs/disaster-oil-audit-pr15.md`（履歴案内）
 

@@ -1,5 +1,7 @@
 # タイル画像の論理対応・外部配置設計
 
+本書の原GIF58件の対応表、候補key、配信方式の検討は導入時の記録である。現在のasset key・配信allowlist・検査/fallbackは[AssetManifestResolver](../../product/app/Services/AssetManifestResolver.php)と[AssetController](../../product/app/Http/Controllers/AssetController.php)を正本とし、表中の旧keyや58件を現行全体の上限として使わない。後続の新規素材は[天候GIF配置](weather-asset-placement-4.13.0.md)と[scene asset手順](../../product/resources/scene-assets/README.md)を確認し、原GIFの来歴・非再配布境界と混同しない。
+
 ## 決定
 
 箱庭諸島2＋に存在する地形、施設、怪獣などは、ローカルに保持する原GIFを新作UIで使用する。ただし画像バイナリは公開Gitリポジトリへ収録せず、実行時にGit外のディレクトリから読み取り専用で提供する。
@@ -137,9 +139,9 @@ Windowsの開発ホスト、Linux本番ホストともホスト絶対パスはGi
 
 ### 配信方式の要件
 
-- web serverのaliasまたはアプリの制限付きasset endpointを候補とし、Docker設計時に選ぶ。
+- 導入時はweb serverのaliasまたはアプリの制限付きasset endpointを候補とした。現行の制限付きendpointは上記AssetControllerとresolverを確認する。
 - URLは`HAKONIWA_TILE_ASSET_BASE_URL`とマニフェストbasenameから生成する。filesystem pathをAPIへ返さない。
-- 許可された58ファイル以外を列挙・取得できないようにする。
+- 導入時の対象は原GIF58ファイル。現在はresolverのallowlistで制限し、任意ファイルの列挙・取得へ広げない。
 - GIF、PNG、WebPの実画像MIME、nosniff、適切なCSP、cache方針を設定する。
 - URLへ`?v=<mtime>-<size>`を付ける。同名ファイルを置換するとURLが変わり、image rebuild、DB更新、frontend buildなしでbrowser reload時に取得し直せる。
 - 原名・原形式のまま配信し、build時の最適化、sprite化、再encodeはしない。

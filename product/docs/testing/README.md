@@ -22,7 +22,7 @@ QualityはPHPUnit設定からfileを検出し、固定plan・16 shardの割当�
 - `tests/Concerns`と`tests/Support`はfixture・DB分離・worker・選択と証拠保存の実装である。`Support/ReusableSurfaceTemplateBuilderTest.php`は通常suiteの外にあるが、DB managerがtemplate構築に直接使う。
 - `tests/Support/*_worker.php`は並行テストから別processとして起動される。worker単体の実行や、ファイル名だけでの削除は行わない。
 - `tests/Fixtures`、`tests/Underground/Fixtures`、フロントエンドの`__fixtures__`やtest helperは回帰テストの入力である。`party-presentation.json`には[生成元](../../tests/scripts/generate_party_presentation_fixture.php)とPHP側fixtureがある。生成する際は出力先を明示し、既存入力を無関係に上書きしない。
-- Upgrade、concurrency、rollback、retention、idempotencyなどの過去事象を契機にしたテストも、現行の到達経路を守る場合は現役である。古い版番号や日付だけで一時検証と扱わない。
+- Upgrade、concurrency、rollback、retention、idempotencyなどの過去事象を契機にしたテストも、現行の到達経路を守る場合は現役である。古い版番号や日付だけで一時検証と扱わない。 `EcopoUpgradeTest`や`SecretaryItemGameplayContractTest`は旧payloadと現行契約の境界を、receipt関連testは集約・削除後の日誌/回想/装備来歴を守る。旧method名だけを基準に削除しない。
 
 ## 保存された調査と測定器
 
