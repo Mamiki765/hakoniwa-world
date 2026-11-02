@@ -22,12 +22,27 @@ final class CurrentRulesetContractTest extends TestCase
         // Production-used snapshots stay fixed independently of the current selection.
         $this->assertSame('f23a9c641323ae7067e8d898a00f22c5eaacecc229a8a085f71bd49f3eb6ac94', $this->checksum(require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v37.php')));
         $this->assertSame('7d4cd4232fe4ffcfe082db7ee5ab5e8c05f45538c5ae8ccc0abb2bf0e9fcce64', $this->checksum(require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v38.php')));
+        $this->assertSame('21c9c26f5091c2656740e03aea4c860c39a5482aca6002e91190d9e7aa303422', $this->checksum(require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v41.php')));
         $this->assertArrayNotHasKey('behavior', $current);
         $this->assertArrayNotHasKey('data', $current);
         $this->assertArrayNotHasKey('flavor', $current);
         $summary = app(RulesetAuthoringValidator::class)->validate($current);
         $this->assertSame($current['key'], $summary['key']);
         $this->assertSame($current['version'], $summary['version']);
+    }
+
+    public function test_current_manual_origin_requires_an_explicit_land_selector(): void
+    {
+        $settings = config('hakoniwa.ruleset');
+        foreach ($settings['command_definitions'] as &$command) {
+            if ($command['key'] === 'territory_expand') {
+                unset($command['metadata']['adjacency']['source_terrain']);
+            }
+        }
+        unset($command);
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('source_terrain must select land');
+        app(RulesetAuthoringValidator::class)->validate($settings);
     }
 
     public function test_attraction_repetition_is_authored_only_in_the_release_draft_not_the_frozen_predecessor(): void

@@ -1,6 +1,6 @@
 <?php
 
-$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v41.php';
+$currentRuleset = require __DIR__.'/hakoniwa/rulesets/hakoniwa-2s-plus-v42.php';
 
 return [
     'application_version' => '5.8.3',
@@ -8,12 +8,12 @@ return [
     'published_rulesets' => [$currentRuleset['key'] => $currentRuleset],
     // Inspection metadata only; these fragments never compose the runtime snapshot.
     'ruleset_authoring_domains' => [
-        'v41/world-and-map.php',
+        'v42/world-and-map.php',
         'current/lifecycle-and-karma.php',
         'current/economy-and-resources.php',
         'current/terrain-and-disasters.php',
         'current/facilities.php',
-        'v39/commands-and-production.php',
+        'v42/commands-and-production.php',
         'v37/turn-pipeline.php',
         'current/monsters-and-military.php',
         'v40/secretary.php',

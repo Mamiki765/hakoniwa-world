@@ -409,6 +409,7 @@
 - Implemented: Yes
 - Decision: `hakoniwa-2s-plus-v3`ではactive Nation間だけを対象に、共有surface cell shuffle順で各対象cellを1回訪問し、6方向から1方向だけを専用乱数streamで選ぶ。失敗時の再抽選は行わず、成功したowner変更は即時反映して後続cellから観測できる。`territory_expand`は従来の中立陸地取得に加え、隣接自領がある別active Nation所有のwasteland/scorchedだけを取得できる。各active NationのCapitalからhex distance 2以内は他Nationへのownership transferを禁止するが、core内cellは外側へのinfluence sourceとして通常どおり機能する。neutral、dormant、sunken、monster occupancyは今回のinfluence対象にしない。Ruleset v24以降では取得側の現在陸地面積が地盤沈下の安全面積以上なら自動取得せず、同一phase内の取得・喪失を逐次反映する。上限側が土地を失う処理、手動拡張、抽選順は変更しない。
 - Remaining Open/Deferred: 防壁都市・占領抵抗はB-05、dormant territory占領はB-12、dormant Capital保護はB-13、報復・反撃は別roadmapの判断を維持する。
+- Owner decision 2026-11-02: 手動拡張の起点はv42から隣接する自国陸地に限る。sea/shallowの所有セルは施設名を問わず足場にしない。凍結v41の旧挙動は維持する。自動感化・埋立・敵施設破壊は変更しない。[v42 draft](../product/docs/plans/v42-territory-origin-draft.md)を参照する。
 - Decision record: `product/docs/territory-expansion-influence-ver-1.4.0.md`（履歴案内）、`docs/reference-analysis/hakoniwa-2plus-world-map.md`（履歴案内）
 
 ### MISSILE-01 launch intentと基地単位解決

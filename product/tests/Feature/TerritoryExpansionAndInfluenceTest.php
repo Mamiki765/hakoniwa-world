@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Application\BuriedTreasureService;
+use App\Application\CommandQueueService;
 use App\Application\DomesticCommandExecutor;
 use App\Application\NationCreationService;
 use App\Application\PlayerIslandEventService;
+use App\Application\RulesetPublisher;
 use App\Application\TerritoryInfluenceService;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\NationLandAreaCalculator;
@@ -13,6 +15,7 @@ use App\Domain\Secretary\SecretaryItemCatalog;
 use App\Domain\Turn\TurnContext;
 use App\Domain\Turn\TurnRandomStreamFactory;
 use App\Domain\Turn\TurnState;
+use App\Domain\Turn\UnresolvedNextTurnRunException;
 use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
@@ -24,6 +27,7 @@ use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
 use App\Models\NationMembership;
+use App\Models\RulesetVersion;
 use App\Models\TerrainDefinition;
 use App\Models\TurnRun;
 use App\Models\User;
@@ -88,6 +92,148 @@ final class TerritoryExpansionAndInfluenceTest extends TestCase
         $this->assertSame($actor->id, $metadata['new_owner_nation_id']);
         $this->assertArrayNotHasKey('terrain_key', $metadata);
         $this->assertArrayNotHasKey('facility_key', $metadata);
+    }
+
+    #[DataProvider('manualOriginCases')]
+    public function test_manual_origin_uses_versioned_physical_terrain(
+        bool $frozen,
+        string $sourceTerrain,
+        bool $expected,
+    ): void {
+        [$world, $space, $user, $actor, $foreign] = $this->worldAndNations();
+        if ($frozen) {
+            $previous = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v41.php');
+            $world->update(['ruleset_version_id' => RulesetVersion::query()->where('key', $previous['key'])->sole()->id]);
+        }
+        [$target, $source] = $this->remotePair($space, [$actor, $foreign]);
+        foreach ((new GridCoordinate($target->x, $target->y))->neighborsWithin(
+            $space->min_x, $space->max_x, $space->min_y, $space->max_y,
+        ) as $point) {
+            $neighbor = MapCell::query()->where('map_space_id', $space->id)
+                ->where('x', $point->x)->where('y', $point->y)->firstOrFail();
+            $this->setCell($neighbor, 'sea', null);
+        }
+        // A future facility identity must inherit the terrain contract without a name registration.
+        $facility = FacilityDefinition::query()->create([
+            'key' => 'fixture_unknown_origin', 'name' => '起点契約の試験施設',
+            'asset_key' => 'tile.fixture_unknown_origin', 'build_command_key' => null,
+            'buildable_terrain_keys' => [$sourceTerrain], 'metadata' => [],
+        ]);
+        $this->setCell($source, $sourceTerrain, $actor->id, $facility->key);
+        $this->setCell($target, 'wasteland', null);
+        $actor->update(['money' => 1_000]);
+
+        $preview = collect($this->actingAs($user)->getJson(
+            "/api/v1/nations/{$actor->id}/map-spaces/{$space->id}/command-definitions"
+            ."?target_x={$target->x}&target_y={$target->y}&position=1",
+        )->assertOk()->json('data.commands'))->firstWhere('key', 'territory_expand');
+        $this->assertSame($expected ? 'currently_executable' : 'currently_unavailable', $preview['execution_preview_status']);
+
+        $item = $this->queue($user, $actor, $space, $target);
+        $queue = $item->queue()->with('items.definition')->firstOrFail();
+        $after = app(CommandQueueService::class)->projectCellStateBeforePosition(
+            $target->fresh(), $queue, 2, $actor, $space,
+        );
+        $this->assertSame($expected ? $actor->id : null, $after['owner_nation_id']);
+
+        app(DomesticCommandExecutor::class)->execute(
+            $this->context($world->fresh(), [$actor->id, $foreign->id], hash('sha256', 'origin-contract')),
+        );
+        $this->assertSame($expected ? 'completed' : 'failed', $item->fresh()->status);
+        $this->assertSame($expected ? $actor->id : null, $target->fresh()->owner_nation_id);
+        if (! $expected) {
+            $this->assertSame('missing_adjacent_territory', $item->fresh()->failure_code);
+            $this->assertGreaterThanOrEqual(1_000, $actor->fresh()->money);
+        }
+    }
+
+    /** @return iterable<string, array{bool, string, bool}> */
+    public static function manualOriginCases(): iterable
+    {
+        // Owner: preserve v41; v42 excludes both water terrains and keeps adjacent owned land.
+        yield 'frozen ownership-only origin' => [true, 'sea', true];
+        yield 'water origin' => [false, 'sea', false];
+        yield 'shallow origin' => [false, 'shallow', false];
+        yield 'land origin independent of facility identity' => [false, 'plain', true];
+    }
+
+    public function test_land_origin_upgrade_preserves_history_and_refuses_an_unresolved_turn(): void
+    {
+        [$world, $space, $user, $actor, $foreign] = $this->worldAndNations();
+        $previous = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v41.php');
+        $old = app(RulesetPublisher::class)->assertPublishedSnapshot($previous);
+        $world->update(['ruleset_version_id' => $old->id]);
+        $world = $world->fresh();
+        [$target, $source] = $this->remotePair($space, [$actor, $foreign]);
+        foreach ((new GridCoordinate($target->x, $target->y))->neighborsWithin(
+            $space->min_x, $space->max_x, $space->min_y, $space->max_y,
+        ) as $point) {
+            $neighbor = MapCell::query()->where('map_space_id', $space->id)
+                ->where('x', $point->x)->where('y', $point->y)->firstOrFail();
+            $this->setCell($neighbor, 'sea', null);
+        }
+        $this->setCell($source, 'sea', $actor->id);
+        $this->setCell($target, 'wasteland', null);
+        $next = require config_path('hakoniwa/rulesets/hakoniwa-2s-plus-v42.php');
+        config(['hakoniwa.ruleset' => $previous]);
+        try {
+            $item = app(CommandQueueService::class)->add(
+                $user, $actor, $space, 'territory_expand', $target->x, $target->y,
+                (string) Str::uuid(), 1,
+            )['item'];
+        } finally {
+            config(['hakoniwa.ruleset' => $next]);
+        }
+        $history = array_map(fn ($model): array => [$model, $model->fresh()->getAttributes()], [
+            $old, $item->definition, $actor, $item->queue, $item, $target,
+        ]);
+        $resources = DB::table('nation_resources')->where('nation_id', $actor->id)->orderBy('id')->get()->all();
+        $assertPreserved = function () use ($history, $actor, $resources): void {
+            foreach ($history as [$model, $attributes]) {
+                $this->assertSame($attributes, $model->fresh()->getAttributes());
+            }
+            $this->assertEquals($resources, DB::table('nation_resources')->where('nation_id', $actor->id)->orderBy('id')->get()->all());
+        };
+        $worldBefore = $world->getAttributes();
+        $count = RulesetVersion::query()->count();
+        $this->targetTurn = $world->current_turn + 1;
+        $pending = $this->context($world, [$actor->id], hash('sha256', 'origin-upgrade-pending'));
+        $pending->run->update(['is_dry_run' => false, 'status' => TurnRun::STATUS_PENDING]);
+        $migration = require database_path('migrations/2026_11_02_000000_publish_land_origin_territory_ruleset.php');
+        try {
+            $migration->up();
+            $this->fail('The upgrade must refuse an unresolved next official Turn.');
+        } catch (UnresolvedNextTurnRunException) {
+            $this->assertSame($worldBefore, $world->fresh()->getAttributes());
+            $this->assertSame($count, RulesetVersion::query()->count());
+            $assertPreserved();
+        }
+
+        $pending->run->update(['is_dry_run' => true, 'status' => TurnRun::STATUS_DRY_RUN]);
+        $migration->up();
+        $published = app(RulesetPublisher::class)->assertPublishedSnapshot($next);
+        $worldAfter = $world->fresh()->getAttributes();
+        $this->assertSame([
+            ...$worldBefore,
+            'ruleset_version_id' => $published->id,
+            'updated_at' => $worldAfter['updated_at'],
+        ], $worldAfter);
+        $assertPreserved();
+        $migration->up();
+        $this->assertSame($worldAfter, $world->fresh()->getAttributes());
+        $this->assertSame($count, RulesetVersion::query()->count());
+        $assertPreserved();
+
+        // A request made under v41 is revalidated using the current World definition.
+        // Its original identity stays v41 even though v42 now refuses its water origin.
+        app(DomesticCommandExecutor::class)->execute(
+            $this->context($world->fresh(), [$actor->id], hash('sha256', 'old-origin-request-after-upgrade')),
+        );
+        $this->assertSame('failed', $item->fresh()->status);
+        $this->assertSame('missing_adjacent_territory', $item->fresh()->failure_code);
+        $this->assertNull($target->fresh()->owner_nation_id);
+        $this->assertSame($old->id, $item->fresh()->request_ruleset_version_id);
+        $this->assertSame($item->command_definition_id, $item->fresh()->command_definition_id);
     }
 
     /** @return iterable<string, array{string|null, string}> */

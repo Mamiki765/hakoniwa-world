@@ -15,6 +15,7 @@ use App\Domain\Command\PlayerFacingCommandException;
 use App\Domain\Command\PortAdjacencyResolver;
 use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\TerritoryExpansionFacts;
+use App\Domain\Command\TerritoryExpansionOriginPolicy;
 use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Command\UnderseaConstructionPolicy;
 use App\Domain\Command\WindPowerRepairPolicy;
@@ -66,6 +67,7 @@ final class DomesticCommandExecutor
         private readonly MonsterSpawnService $monsterSpawn,
         private readonly NationIdleCounterFinalizer $idleCounters,
         private readonly TerritoryExpansionPolicy $territoryExpansion,
+        private readonly TerritoryExpansionOriginPolicy $territoryOrigins,
         private readonly CapitalCorePolicy $capitalCores,
         private readonly ChunkCoordinateService $chunks,
         private readonly NationCommandTargetService $nationTargets,
@@ -1636,7 +1638,7 @@ final class DomesticCommandExecutor
             facilityKey: $cell->facility?->key,
             monsterOccupied: $monsterOccupied,
             capitalCoreProtected: $capitalProtected,
-            adjacentActorTerritory: $this->hasOwnedCellWithin($nation, $cell, 1, false),
+            adjacentActorTerritory: $this->territoryOrigins->within($nation, $cell, $definition->metadata),
             definitionTargetTerrainKeys: $definition->target_terrain_keys,
             definitionRequiresEmptyFacility: $definition->requires_empty_facility,
         );
@@ -2345,31 +2347,6 @@ final class DomesticCommandExecutor
             ->where('map_space_id', $cell->map_space_id)
             ->whereNotNull('owner_nation_id')
             ->where('owner_nation_id', '!=', $nation->id)
-            ->where(function ($query) use ($coordinates): void {
-                foreach ($coordinates as $coordinate) {
-                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
-                }
-            })
-            ->exists();
-    }
-
-    private function hasOwnedCellWithin(
-        Nation $nation,
-        MapCell $cell,
-        int $radius,
-        bool $includeCenter,
-    ): bool {
-        $coordinates = (new GridCoordinate($cell->x, $cell->y))->radius($radius);
-        if (! $includeCenter) {
-            $coordinates = array_values(array_filter(
-                $coordinates,
-                static fn (GridCoordinate $coordinate): bool => $coordinate->x !== $cell->x || $coordinate->y !== $cell->y,
-            ));
-        }
-
-        return MapCell::query()
-            ->where('map_space_id', $cell->map_space_id)
-            ->where('owner_nation_id', $nation->id)
             ->where(function ($query) use ($coordinates): void {
                 foreach ($coordinates as $coordinate) {
                     $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));

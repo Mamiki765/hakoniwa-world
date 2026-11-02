@@ -19,6 +19,7 @@ use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
 use App\Domain\Command\SurfaceLandProjection;
 use App\Domain\Command\TerritoryExpansionFacts;
+use App\Domain\Command\TerritoryExpansionOriginPolicy;
 use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Command\UnderseaConstructionPolicy;
 use App\Domain\Command\WindPowerRepairPolicy;
@@ -80,6 +81,7 @@ final class CommandQueueService
         private readonly CommandQuantitySemantics $quantitySemantics,
         private readonly NationCommandTargetService $nationTargets,
         private readonly TerritoryExpansionPolicy $territoryExpansion,
+        private readonly TerritoryExpansionOriginPolicy $territoryOrigins,
         private readonly CapitalCorePolicy $capitalCores,
         private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
         private readonly UndergroundFacilityService $undergroundFacilities,
@@ -1363,19 +1365,25 @@ final class CommandQueueService
         ?SurfaceCommandProjectionMemo $projectionMemo = null,
     ): bool {
         $projectionMemo ??= new SurfaceCommandProjectionMemo;
-        $neighbors = $this->projectedNeighborCells($mapSpace, $cell, $projectionMemo);
-        $adjacentActorTerritory = $neighbors->contains(function (MapCell $neighbor) use ($queue, $beforePosition, $nation, $mapSpace, $projectionMemo): bool {
-            $projected = $this->projectCellStateBeforePosition(
-                $neighbor,
-                $queue,
-                $beforePosition,
-                $nation,
-                $mapSpace,
-                projectionMemo: $projectionMemo,
-            );
+        $neighbors = $this->projectedNeighborCells($mapSpace, $cell, $projectionMemo)
+            ->keyBy(static fn (MapCell $neighbor): string => $neighbor->x.':'.$neighbor->y);
+        $adjacentActorTerritory = $this->territoryOrigins->withinProjected(
+            $nation,
+            $cell,
+            $definition->metadata,
+            function (int $x, int $y) use ($neighbors, $queue, $beforePosition, $nation, $mapSpace, $projectionMemo): ?array {
+                $neighbor = $neighbors->get($x.':'.$y);
 
-            return $projected['owner_nation_id'] === $nation->id;
-        });
+                return $neighbor === null ? null : $this->projectCellStateBeforePosition(
+                    $neighbor,
+                    $queue,
+                    $beforePosition,
+                    $nation,
+                    $mapSpace,
+                    projectionMemo: $projectionMemo,
+                );
+            },
+        );
 
         try {
             $this->validateTerritoryExpansionState(
@@ -1649,7 +1657,7 @@ final class CommandQueueService
                     'facility_key' => $facilityKey,
                     'owner_nation_id' => $ownerNationId,
                 ],
-                $ownerNationId !== $nation->id && $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false),
+                $ownerNationId !== $nation->id && $this->territoryOrigins->within($nation, $cell, $definition->metadata),
             );
 
             return;
@@ -2277,27 +2285,6 @@ final class CommandQueueService
         if (! $this->hasCurrentOwnedLandWithin($nation, $cell, LandDevelopmentDistancePolicy::WATER_RADIUS, projectionMemo: $projectionMemo)) {
             throw new PlayerFacingCommandException('建設対象の3hex以内に自国陸地がありません。');
         }
-    }
-
-    private function hasOwnedCellWithin(Nation $nation, MapSpace $mapSpace, MapCell $cell, int $radius, bool $includeCenter = true): bool
-    {
-        $coordinates = (new GridCoordinate($cell->x, $cell->y))->radius($radius);
-        if (! $includeCenter) {
-            $coordinates = array_values(array_filter(
-                $coordinates,
-                static fn (GridCoordinate $coordinate): bool => $coordinate->x !== $cell->x || $coordinate->y !== $cell->y,
-            ));
-        }
-
-        return MapCell::query()
-            ->where('map_space_id', $mapSpace->id)
-            ->where('owner_nation_id', $nation->id)
-            ->where(function ($query) use ($coordinates): void {
-                foreach ($coordinates as $coordinate) {
-                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
-                }
-            })
-            ->exists();
     }
 
     /** @return array{owned_land: bool, sea: bool} */
