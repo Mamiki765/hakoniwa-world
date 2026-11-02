@@ -1,0 +1,29 @@
+# v42 draft: 手動領土拡張の陸地起点
+
+Ownerは2026-11-02に手動拡張の水域起点除外と本番の次の1世代への集約を決定した。Owner確認済みの本番Nはv41、今回releaseの唯一のN+1 draftはv42。本番のdeployed/source SHAはこの実装では独立確認していない。
+
+この設計は[5.9.0 release](../releases/5.9.0.md)のv42 draftに含まれる。release PRの準備と本番適用は別で、今回の本番適用は行わない。後続の同releaseのRuleset変更もこのv42へ統合し、v43以降を作らない。
+
+## 宣言と共通の判定
+
+v42の`territory_expand.metadata.adjacency.source_terrain = land`をBehaviorとして宣言する。`TerritoryExpansionOriginPolicy`がこのselectorを解釈し、現在の許可・投影・Turn実行を既存`OwnedLandProximity`へ接続する。selectorを持たない凍結v41は、隣接する自国所有セルを使う旧挙動を維持する。v42以降のauthoringでは陸地selectorの省略を拒否する。
+
+陸地分類は既存`NationLandAreaCalculator`のsea/shallow除外を使う。施設identityに依存しないため、新しい施設をsea/shallowへ追加しても起点許可のリスト更新は不要。港は建設後の実地形がplainなので有効。新しいterrain自体の追加はこの変更の範囲外で、その分類は別途定義する必要がある。
+
+起点の自国所有・六方向隣接・中心除外を維持する。対象地形、他国領の取得制限、費用、怪獣、首都保護、休戦、面積集計、自動感化、埋立とその隣国判定、敵施設の破壊規則は変更しない。プレビューへ返す情報項目や秘匿表示も増やさない。
+
+## 不変な履歴と前方移行
+
+v41および共有祖先のpayloadは編集しない。新しいentrypointはv41の完全なpayloadを明示的に引き継ぎ、identityと変更したcommands domainだけを置き換える。変更はkey/version、手動拡張の起点selector、対応する説明文に限る。
+
+`2026_11_02_000000_publish_land_origin_territory_ruleset.php`は、固定v41から固定v42へ移すappend-only migrationである。既存publicationと同じWorld mutation lockとtransactionを使い、取得後にWorldの版を再確認し、次の公式Turnが未解決なら拒否する。v41のsnapshot/definitions一致を検証した上でv42を公開し、Worldのcurrent参照だけを変更する。queue request identityや過去TurnのRuleset/provenanceを更新しない。再実行は重複公開や再移行を起こさない。downは提供せず、復旧は既存のreview済みbackup契約に従う。
+
+v41で受け付けたqueueも、移行後の実行時は既存のresolverが現在Worldのv42 definitionで再検証する。保存済みrequest identityはv41に保つ。この境界は実際の旧版予約を使って確認する。
+
+fresh installで既存のv40→v41 publicationを再実行できるよう、Publisherの厳密な凍結predecessor照合へv41を追加する。任意のhistorical payloadを受け入れる例外ではない。DB構造は変わらず、baseline schemaと既存migrationは変更しない。
+
+## 検証の範囲
+
+恒久検証は未知の施設identityでの「v41の旧水域起点」「v42のsea/shallow拒否」「v42の陸地許可」を使い、実際のHTTPプレビュー・計画投影・Turn内実行の一致を確認する。施設名一覧は固定しない。別の一つのケースでmigrationの未解決Turn拒否、成功時の履歴・資産・原identity保持、再実行を確認する。既存のv41 checksum契約とcurrent authoringのselector必須検証を併用する。
+
+今回だけの修正前再現・過去の一時script・動作観測はrepo外の証拠として保持する。対象コマンドの名前別一覧、全施設の組合せ、現catalogの数値コピーを恒久テストへ追加しない。focusedな既存の対象保護、fresh install、forward adoptionを確認し、全件回帰は統合後のexact-head CIへ委ねる。

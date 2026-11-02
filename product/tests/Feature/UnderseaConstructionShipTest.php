@@ -163,7 +163,17 @@ final class UnderseaConstructionShipTest extends CommandAndMissileTestCase
     {
         $world = $this->lightweightWorld();
         [$user, $nation] = $this->nation($world, '造船国');
-        $this->ownedWaterFacility($nation, 'port');
+        $port = $this->ownedWaterFacility($nation, 'port');
+        $portCoordinate = new GridCoordinate($port->x, $port->y);
+        // This case checks capacity, so provide a free departure cell instead
+        // of relying on the island terrain generated from the User ID seed.
+        $spawn = MapCell::query()->where('map_space_id', $port->map_space_id)
+            ->whereNull('facility_definition_id')->doesntHave('ship')->doesntHave('monsterOccupancy')
+            ->orderBy('id')->get()
+            ->firstOrFail(fn (MapCell $cell): bool => $portCoordinate->distanceTo(new GridCoordinate($cell->x, $cell->y)) === 1);
+        app(MapCellStateService::class)->transitionTerrain($spawn, TerrainDefinition::query()->where('key', 'sea')->sole());
+        $spawn->owner_nation_id = null;
+        $spawn->save();
         $definition = app(SurfaceShipCatalog::class)->definition($world->rulesetVersion->settings, 'undersea_construction');
         $money = $definition->buildCostMoney * 3;
         $nation->update(['money' => $money]);

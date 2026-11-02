@@ -9,9 +9,11 @@ use App\Models\World;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use stdClass;
 
 final readonly class BoostScheduleService
 {
@@ -24,16 +26,31 @@ final readonly class BoostScheduleService
         $now = CarbonImmutable::now();
         $rows = BoostOccurrence::query()->where('world_id', $world->id)->whereNull('cancelled_at')
             ->where('ends_at', '>', $now)->orderBy('starts_at')->orderBy('id')->get();
+        $nextByKind = $rows->groupBy('kind')->map(fn ($group) => $group->first())->values();
 
         return ['server_now' => $now->utc()->toIso8601String(), 'timezone' => 'Asia/Tokyo',
-            'occurrences' => $rows->groupBy('kind')->map(fn ($group): array => $this->present($group->first(), $now))->values()->all()];
+            'occurrences' => $this->presentOccurrences($nextByKind, $now)];
+    }
+
+    /**
+     * @param  Collection<int, BoostOccurrence>  $rows
+     * @return list<array<string,mixed>>
+     */
+    private function presentOccurrences(Collection $rows, CarbonImmutable $now): array
+    {
+        if ($rows->isEmpty()) {
+            return [];
+        }
+        $series = DB::table('boost_series')->whereIn('id', $rows->pluck('boost_series_id')->unique()->all())
+            ->get(['id', 'title', 'schedule'])->keyBy('id');
+
+        return $rows->map(fn (BoostOccurrence $row): array => $this->present($row, $now,
+            $series->get($row->boost_series_id) ?? throw new \RuntimeException('Boost series is missing.')))->values()->all();
     }
 
     /** @return array<string,mixed> */
-    private function present(BoostOccurrence $row, CarbonImmutable $now): array
+    private function present(BoostOccurrence $row, CarbonImmutable $now, stdClass $series): array
     {
-        $series = DB::table('boost_series')->where('id', $row->boost_series_id)->first(['title', 'schedule'])
-            ?? throw new \RuntimeException('Boost series is missing.');
         $plan = $row->kind === 'turn_acceleration' ? AdditionalTurnPlan::stored($row->starts_at, $row->ends_at,
             json_decode((string) $series->schedule, true, 512, JSON_THROW_ON_ERROR), $row->occurrence_number) : null;
 
@@ -57,11 +74,12 @@ final readonly class BoostScheduleService
     {
         $this->authorize($actor);
         $now = CarbonImmutable::now();
+        $rows = BoostOccurrence::query()->where('world_id', $world->id)->orderByDesc('id')->limit(500)->get();
 
-        return [...$this->publicStatus($world), 'uncompensated_turns' => $this->turns->debt($world, $now),
+        return ['server_now' => $now->utc()->toIso8601String(), 'timezone' => 'Asia/Tokyo',
+            'uncompensated_turns' => $this->turns->debt($world, $now),
             'current_turn' => $world->current_turn,
-            'occurrences' => BoostOccurrence::query()->where('world_id', $world->id)->orderByDesc('id')->limit(500)->get()
-                ->map(fn (BoostOccurrence $row): array => $this->present($row, $now))->all()];
+            'occurrences' => $this->presentOccurrences($rows, $now)];
     }
 
     /** @param array<string,mixed> $input

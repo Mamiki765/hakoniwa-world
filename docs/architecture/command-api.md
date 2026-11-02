@@ -1,5 +1,15 @@
 # Command API
 
+本書はRoadmap PR2・PR5・PR6の導入時点におけるAPIと予約境界の記録である。
+以下の当時の枠数や「将来実行」「実装しない」は、現行の開発計画・Turn全体の未実装宣言ではない。
+現行APIは[CommandQueueController](../../product/app/Http/Controllers/Api/CommandQueueController.php)、
+登録・編集・取消と応答は[CommandQueueService](../../product/app/Application/CommandQueueService.php)、
+数量の型は[DevelopmentPlanQuantity](../../product/app/Domain/Command/DevelopmentPlanQuantity.php)、
+実行時の数量解釈は[CommandQuantitySemantics](../../product/app/Application/CommandQuantitySemantics.php)と
+[DomesticCommandExecutor](../../product/app/Application/DomesticCommandExecutor.php)で確認する。
+一括登録は[一括計画API](../../product/docs/architecture/bulk-plans-and-vault-api.md)、
+公式Turnの実行境界は[Turn pipeline](turn-pipeline.md)を参照する。
+
 ## Scope
 
 Roadmap PR2 で command definition と queue 操作だけを提供する。queue item は turn engine が将来実行する予約であり、本 scope では地形、施設、資金、資源を変更しない。

@@ -2,6 +2,7 @@
 
 namespace App\Application;
 
+use App\Domain\Map\GridCoordinate;
 use App\Models\MapCell;
 use App\Models\TerrainDefinition;
 use DomainException;
@@ -44,6 +45,21 @@ final class DisasterMutableCellIndex
     public function cells(): array
     {
         $cells = array_values($this->cellsByCoordinate);
+        usort($cells, static fn (MapCell $left, MapCell $right): int => $left->id <=> $right->id);
+
+        return $cells;
+    }
+
+    /** @return list<MapCell> */
+    public function cellsWithinRadius(GridCoordinate $center, int $radius): array
+    {
+        $cells = [];
+        foreach ($center->radius($radius) as $coordinate) {
+            $cell = $this->cellAt($coordinate->x, $coordinate->y);
+            if ($cell !== null) {
+                $cells[] = $cell;
+            }
+        }
         usort($cells, static fn (MapCell $left, MapCell $right): int => $left->id <=> $right->id);
 
         return $cells;

@@ -4,6 +4,7 @@ namespace App\Application;
 
 use App\Domain\Economy\CapacityBoundedAssetService;
 use App\Domain\Facility\FacilityVisibilityPolicy;
+use App\Domain\Facility\SettlementStageResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Monster\MonsterTurnBatch;
@@ -563,14 +564,11 @@ final class SurfaceShipTurnService
         if ($cell->facility?->key === 'capital') {
             return;
         }
-        foreach ($context->ruleset->settings['turn_processing']['settlement']['stages'] as $stage) {
-            if ($cell->population >= $stage['minimum_population'] && $cell->population <= $stage['maximum_population']) {
-                $this->cells->setFacility($cell, FacilityDefinition::query()->where('key', $stage['facility_key'])->firstOrFail());
-
-                return;
-            }
-        }
-        $this->cells->setFacility($cell, FacilityDefinition::query()->where('key', 'city')->firstOrFail());
+        $targetKey = SettlementStageResolver::forPopulation(
+            $cell->population,
+            $context->ruleset->settings['turn_processing']['settlement']['stages'],
+        );
+        $this->cells->setFacility($cell, FacilityDefinition::query()->where('key', $targetKey)->firstOrFail());
     }
 
     private function persistMovement(

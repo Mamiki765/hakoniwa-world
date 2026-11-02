@@ -1649,6 +1649,18 @@ final class MissileImpactResolver
             ['monster_removed' => $monsterRemoved],
         );
         if ($centralDamage !== null) {
+            $damageDetails = [
+                'facility_key' => $centralDamage['facility_key'],
+                'before_scale' => $centralDamage['before_scale'],
+                'after_scale' => $centralDamage['after_scale'],
+                'scale_loss' => $centralDamage['scale_loss'],
+                'from_terrain_key' => $beforeTerrain,
+                'to_terrain_key' => $centralDamage['to_terrain_key'],
+                'monster_removed' => $monsterRemoved,
+                'removed_facility_key' => $centralDamage['destroyed']
+                    ? $centralDamage['facility_key']
+                    : null,
+            ];
             $this->recordMeaningfulImpact(
                 $context,
                 $firingNation,
@@ -1657,18 +1669,7 @@ final class MissileImpactResolver
                 $centralDamage['destroyed']
                     ? 'terrain_destroyed'
                     : 'facility_scale_land_damaged',
-                [
-                    'facility_key' => $centralDamage['facility_key'],
-                    'before_scale' => $centralDamage['before_scale'],
-                    'after_scale' => $centralDamage['after_scale'],
-                    'scale_loss' => $centralDamage['scale_loss'],
-                    'from_terrain_key' => $beforeTerrain,
-                    'to_terrain_key' => $centralDamage['to_terrain_key'],
-                    'monster_removed' => $monsterRemoved,
-                    'removed_facility_key' => $centralDamage['destroyed']
-                        ? $centralDamage['facility_key']
-                        : null,
-                ],
+                $damageDetails,
                 $targetNationId,
                 $targetNationName,
             );
@@ -1681,16 +1682,7 @@ final class MissileImpactResolver
                     : 'facility_scale_land_damaged',
                 'target_nation_id' => $targetNationId,
                 'target_nation_name' => $targetNationName,
-                'facility_key' => $centralDamage['facility_key'],
-                'before_scale' => $centralDamage['before_scale'],
-                'after_scale' => $centralDamage['after_scale'],
-                'scale_loss' => $centralDamage['scale_loss'],
-                'from_terrain_key' => $beforeTerrain,
-                'to_terrain_key' => $centralDamage['to_terrain_key'],
-                'monster_removed' => $monsterRemoved,
-                'removed_facility_key' => $centralDamage['destroyed']
-                    ? $centralDamage['facility_key']
-                    : null,
+                ...$damageDetails,
             ];
         }
         $populationImpact = $this->populationImpact(
@@ -1715,21 +1707,22 @@ final class MissileImpactResolver
         );
         if ($facilityDamage !== null && $facilityDamage['scale_loss'] > 0) {
             $this->markCellChanged($context, $cell);
+            $damageDetails = [
+                'facility_key' => $facilityDamage['facility_key'],
+                'before_scale' => $facilityDamage['before_scale'],
+                'after_scale' => $facilityDamage['after_scale'],
+                'scale_loss' => $facilityDamage['scale_loss'],
+                'from_terrain_key' => $beforeTerrain,
+                'to_terrain_key' => $beforeTerrain,
+                'monster_removed' => $monsterRemoved,
+            ];
             $this->recordMeaningfulImpact(
                 $context,
                 $firingNation,
                 $cell,
                 'land_destruction_missile',
                 'facility_scale_land_damaged',
-                [
-                    'facility_key' => $facilityDamage['facility_key'],
-                    'before_scale' => $facilityDamage['before_scale'],
-                    'after_scale' => $facilityDamage['after_scale'],
-                    'scale_loss' => $facilityDamage['scale_loss'],
-                    'from_terrain_key' => $beforeTerrain,
-                    'to_terrain_key' => $beforeTerrain,
-                    'monster_removed' => $monsterRemoved,
-                ],
+                $damageDetails,
                 $targetNationId,
                 $targetNationName,
             );
@@ -1740,13 +1733,7 @@ final class MissileImpactResolver
                 'effect' => 'facility_scale_land_damaged',
                 'target_nation_id' => $targetNationId,
                 'target_nation_name' => $targetNationName,
-                'facility_key' => $facilityDamage['facility_key'],
-                'before_scale' => $facilityDamage['before_scale'],
-                'after_scale' => $facilityDamage['after_scale'],
-                'scale_loss' => $facilityDamage['scale_loss'],
-                'from_terrain_key' => $beforeTerrain,
-                'to_terrain_key' => $beforeTerrain,
-                'monster_removed' => $monsterRemoved,
+                ...$damageDetails,
             ];
         }
         $targetTerrain = match ($beforeTerrain) {

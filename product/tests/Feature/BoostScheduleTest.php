@@ -48,6 +48,8 @@ final class BoostScheduleTest extends TestCase
             ->assertJsonPath('data.uncompensated_turns', 10)->assertJsonPath('data.windows.0.additional_slots', 10)->json('data');
         $this->assertEquals(20, $preview['duration_hours']);
         $this->assertDatabaseCount('boost_occurrences', 0);
+        $this->getJson($path)->assertOk()->assertJsonPath('data.occurrences', []);
+        $this->getJson("/api/v1/public/worlds/{$world->id}/boosts")->assertOk()->assertJsonPath('data', []);
         $unreservedToken = $preview['token'];
         app(TurnRunner::class)->run($world);
         $this->postJson($path.'/reserve', ['token' => $preview['token']])->assertConflict()->assertJsonPath('code', 'boost_reservation_rejected');
@@ -59,6 +61,16 @@ final class BoostScheduleTest extends TestCase
         $this->assertDatabaseCount('boost_occurrences', 1);
         $service = app(BoostScheduleService::class);
         $this->assertSame(1, $service->additionalSlots(CarbonImmutable::parse('2026-11-01T01:00:00+09:00'), CarbonImmutable::parse('2026-11-01T03:00:00+09:00')));
+        $hunting = $this->boostOccurrence('hunting_ground', $world);
+        $this->getJson($path)->assertOk()->assertJsonCount(2, 'data.occurrences')
+            ->assertJsonPath('data.server_now', CarbonImmutable::now()->utc()->toIso8601String())
+            ->assertJsonPath('data.timezone', 'Asia/Tokyo')
+            ->assertJsonPath('data.occurrences.0.id', $hunting->id)
+            ->assertJsonPath('data.occurrences.0.title', 'Boost test')
+            ->assertJsonPath('data.occurrences.0.turn_interval_minutes', null)
+            ->assertJsonPath('data.occurrences.0.status', 'active')
+            ->assertJsonPath('data.occurrences.1.title', $input['title'])
+            ->assertJsonPath('data.occurrences.1.effects.additional_turn_scheduled_ats', $preview['windows'][0]['additional_scheduled_ats']);
     }
 
     public function test_separate_commands_preserve_even_turns_and_cap_seven_odd_hour_compensations(): void
@@ -193,13 +205,38 @@ final class BoostScheduleTest extends TestCase
         $public = "/api/v1/public/worlds/{$world->id}/boosts";
         Carbon::setTestNow('2026-11-01T09:00:00+09:00');
         $this->getJson($public)->assertOk()->assertJsonPath('data.0.status', 'active')
-            ->assertJsonPath('data.0.multiplier', 2)->assertJsonMissingPath('data.0.created_by');
+            ->assertJsonPath('data.0.multiplier', 2)->assertJsonPath('data.0.turn_interval_minutes', null)
+            ->assertJsonMissingPath('data.0.created_by');
         Carbon::setTestNow('2026-11-01T11:00:00+09:00');
         $this->getJson($public)->assertOk()->assertJsonCount(1, 'data');
+        $orderedIds = BoostOccurrence::query()->orderByDesc('id')->pluck('id')->all();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $admin = $this->getJson($path)->assertOk()->assertJsonCount(3, 'data.occurrences')
+                ->assertJsonPath('data.occurrences.0.title', $input['title'])
+                ->assertJsonPath('data.occurrences.0.status', 'scheduled')
+                ->assertJsonPath('data.occurrences.2.status', 'ended')->json('data');
+            $queries = DB::getQueryLog();
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+        $this->assertSame($orderedIds, array_column($admin['occurrences'], 'id'));
+        // One list must resolve shared series once, independently of occurrence count.
+        $this->assertCount(1, array_filter($queries,
+            static fn (array $query): bool => str_contains($query['query'], 'from "boost_series"')));
+        // The admin response must not build a public list that it immediately replaces.
+        $this->assertCount(1, array_filter($queries,
+            static fn (array $query): bool => str_contains($query['query'], 'from "boost_occurrences"')));
         $second = BoostOccurrence::query()->orderBy('id')->skip(1)->firstOrFail();
         $this->postJson($path."/{$second->id}/cancel", ['future_series' => true])->assertOk();
         $this->postJson($path."/{$second->id}/cancel", ['future_series' => true])->assertOk();
         $this->getJson($public)->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson($path)->assertOk()->assertJsonCount(3, 'data.occurrences')
+            ->assertJsonPath('data.occurrences.0.status', 'cancelled')
+            ->assertJsonPath('data.occurrences.1.status', 'cancelled')
+            ->assertJsonPath('data.occurrences.2.status', 'ended');
     }
 
     public function test_repeated_cron_and_manual_share_current_slot_without_repeating_it(): void

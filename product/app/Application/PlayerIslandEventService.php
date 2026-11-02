@@ -1349,13 +1349,25 @@ final class PlayerIslandEventService
     {
         $facilityKey = $metadata['facility_key'] ?? null;
         if (in_array($facilityKey, ['central_bank', 'central_granary'], true)) {
+            $cause = $this->facilityPartialDamageCause($metadata).'により';
+            $originNationId = $metadata['blast_origin_nation_id'] ?? null;
+            $ownerNationId = $metadata['nation_id'] ?? null;
+            if (in_array($metadata['source_key'] ?? null, ['huge_meteor', 'nuclear_self_destruct_blast'], true)
+                && is_int($originNationId) && is_int($ownerNationId) && $originNationId !== $ownerNationId
+                && is_int($metadata['center_x'] ?? null) && is_int($metadata['center_y'] ?? null)) {
+                $cause = sprintf('、(%s,%s)で発生した%sに巻き込まれて',
+                    number_format($metadata['center_x']),
+                    number_format($metadata['center_y']),
+                    $this->facilityPartialDamageCause($metadata),
+                );
+            }
             $message = sprintf(
-                '%s(%s,%s)の%sが%sにより損傷し、Lv%sからLv%sへ低下しました。',
+                '%s(%s,%s)の%sが%s損傷し、Lv%sからLv%sへ低下しました。',
                 is_string($metadata['nation_name'] ?? null) ? $metadata['nation_name'] : '自国',
                 number_format($this->integer($metadata, 'x')),
                 number_format($this->integer($metadata, 'y')),
                 $this->facilityLabel($facilityKey),
-                $this->facilityPartialDamageCause($metadata),
+                $cause,
                 number_format($this->integer($metadata, 'before_scale')),
                 number_format($this->integer($metadata, 'after_scale')),
             );
@@ -1401,6 +1413,10 @@ final class PlayerIslandEventService
         }
 
         $sourceKey = $metadata['source_key'] ?? null;
+        if ($sourceKey === 'nuclear_self_destruct_blast'
+            && in_array($metadata['facility_key'] ?? null, ['central_bank', 'central_granary'], true)) {
+            return '広域災害';
+        }
         if (in_array($sourceKey, ['tsunami', 'meteor_shower', 'huge_meteor', 'land_subsidence'], true)) {
             return $this->disasterLabel($sourceKey);
         }

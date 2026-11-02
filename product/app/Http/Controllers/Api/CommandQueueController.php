@@ -29,6 +29,7 @@ use App\Models\CommandDefinition;
 use App\Models\FacilityDefinition;
 use App\Models\MapCell;
 use App\Models\MapSpace;
+use App\Models\MonumentDefinition;
 use App\Models\Nation;
 use App\Models\NationCommandQueue;
 use App\Models\NationCommandQueueItem;
@@ -649,14 +650,40 @@ final class CommandQueueController extends Controller
         $constructionShips = $constructionShipIds->isEmpty() ? new EloquentCollection : Ship::query()
             ->where('world_id', $nation->world_id)->where('nation_id', $nation->id)
             ->whereKey($constructionShipIds->all())->get()->keyBy('id');
+        $targetCoordinates = $queue->items
+            ->filter(static fn (NationCommandQueueItem $item): bool => $item->target_context === 'surface_cell'
+                && ! array_key_exists('construction_ship_id', $item->parameters))
+            ->mapWithKeys(static fn (NationCommandQueueItem $item): array => [
+                $item->target_x.':'.$item->target_y => [$item->target_x, $item->target_y],
+            ])->all();
+        /** @var EloquentCollection<string, MapCell> $targetCells */
+        $targetCells = $targetCoordinates === [] ? new EloquentCollection : MapCell::query()
+            ->where('map_space_id', $queue->map_space_id)
+            ->where(function ($query) use ($targetCoordinates): void {
+                foreach ($targetCoordinates as [$x, $y]) {
+                    $query->orWhere(fn ($pair) => $pair->where('x', $x)->where('y', $y));
+                }
+            })->with(['terrain', 'facility'])->get()
+            ->keyBy(static fn (MapCell $cell): string => $cell->x.':'.$cell->y);
+        $targetNationIds = $queue->items->pluck('parameters.target_nation_id')
+            ->filter(static fn (mixed $id): bool => is_int($id))->unique()->values();
+        $targetNames = $targetNationIds->isEmpty() ? collect() : Nation::query()
+            ->whereKey($targetNationIds->all())->pluck('name', 'id');
+        $monumentNames = null;
+        $monumentNameForSelector = function (int $selector) use ($queue, &$monumentNames): ?string {
+            // The quantity resolver invokes this only for monument labels. Other queues do no catalog read.
+            $monumentNames ??= MonumentDefinition::query()
+                ->whereKey($queue->items->pluck('quantity')->unique()->all())->pluck('name', 'id');
+            $name = $monumentNames->get($selector);
+
+            return is_string($name) ? $name : null;
+        };
         $items = $queue->items
-            ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace, $projectionMemo, $constructionShips, $currentRuleset): array {
+            ->map(function (NationCommandQueueItem $item) use ($queue, $nation, $service, $mapSpace, $projectionMemo, $constructionShips, $currentRuleset, $targetCells, $targetNames, $monumentNameForSelector): array {
                 $definition = $service->definitionForItem($item, $currentRuleset);
                 $followsShip = array_key_exists('construction_ship_id', $item->parameters);
                 $cell = $item->target_context === 'surface_cell' && ! $followsShip
-                    ? MapCell::query()->where('map_space_id', $queue->map_space_id)
-                        ->where('x', $item->target_x)->where('y', $item->target_y)
-                        ->with(['terrain', 'facility'])->first()
+                    ? $targetCells->get($item->target_x.':'.$item->target_y)
                     : null;
                 $projected = $cell === null ? null : $service->projectCellStateBeforePosition(
                     $cell,
@@ -671,7 +698,7 @@ final class CommandQueueController extends Controller
                     ? null
                     : $service->projectedOwnerOverbuildEffect($definition, $nation, $projected);
                 $targetNationId = $item->parameters['target_nation_id'] ?? null;
-                $targetName = is_int($targetNationId) ? Nation::query()->whereKey($targetNationId)->value('name') : null;
+                $targetName = is_int($targetNationId) ? $targetNames->get($targetNationId) : null;
 
                 return [
                     'id' => $item->id,
@@ -693,7 +720,7 @@ final class CommandQueueController extends Controller
                         : $this->quantitySemantics->for($definition),
                     'quantity_label' => $definition instanceof UndergroundCommandDefinition
                         ? null
-                        : $this->quantitySemantics->label($definition, $item->quantity),
+                        : $this->quantitySemantics->label($definition, $item->quantity, $monumentNameForSelector),
                     'effective_cost_money' => $this->effectiveCostMoney(
                         $definition, $item, $projected, $nation->id,
                         $constructionShips->get($item->parameters['construction_ship_id'] ?? null),

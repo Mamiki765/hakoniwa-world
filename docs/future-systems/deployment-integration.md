@@ -1,5 +1,7 @@
 # 将来のDocker・配備統合
 
+> 読み方: 初期MVP時点の配備構想です。現在の構成・手順は[Compose運用](../operations/docker-compose.md)、[Turn cron](../operations/turn-cron.md)、[配備状況の確認先](../../product/docs/operations/current-deployment.md)を参照してください。本文のUTC・30/180/365日による休眠案は、後続の[Turnに基づく国家ライフサイクル](../architecture/nation-lifecycle.md)へ置き換わっています。
+
 ## 目的
 
 既存サーバー上のMariachang、Terraria、Nextcloud、Nginx Proxy Manager、board-web等と責務・dataを混在させず、将来hakoniwaを追加する構成を整理する。本Phaseでは既存docker-compose、service、network、volumeを変更しない。

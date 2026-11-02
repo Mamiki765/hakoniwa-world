@@ -1,6 +1,6 @@
 # Shared-world monster system
 
-PR21は怪獣をterrain/facilityから独立した1-cell actorとして実装する。exact catalog、source対応、spawn式、terrain interaction、reward例、asset provenanceは`product/docs/monster-audit-pr21.md`を正本とし、この文書は責務と実行境界を示す。
+本書はPR21以降のactor/occupancy・責務・実行境界を記録する。`product/docs/monster-audit-pr21.md`は導入時のcatalog・原作対応・asset provenanceの履歴案内であり、現在の設定値は[現行Rulesetの確認方法](../../product/docs/architecture/current-ruleset-baseline.md)から確認する。後続の怪獣解決順序は[ADR-0013](../decisions/ADR-0013-ver-2.1.3-resolution-and-legacy-queue.md)と[CompleteTurnEngine](../../product/app/Application/CompleteTurnEngine.php)を正本とする。
 
 ## Domain ownership
 
@@ -21,7 +21,7 @@ actorはspawn元Nationを保持しない。hostは常に現在cellの`owner_nati
 
 ## Turn order and determinism
 
-`calculate_terrain_context`がsurface cell orderを専用shuffle streamで固定する。ver 1.5.0-beta.3のcurrent v5では、このphaseはterrain/sea-edgeを計算せず、全cell IDのorderだけを保持する。immutableな旧rulesetのsame-seed retryだけは旧計算を条件付きで再現する。`process_cells`は全cellとrelationを一括取得し、怪獣occupancy/definitionもWorld単位でbatch loadする。World移行前の定義を参照する生存個体も含め、個体に保存された定義で移動・弓の対象判定・damage・除去を処理する。船の占有判定と軍艦もこの完全なbatchを使う。各cellでは怪獣actorを通常の人口・facility処理より先に実行し、actorが存在したcellの通常処理を終える。
+`calculate_terrain_context`がsurface cell orderを専用shuffle streamで固定する。ver 1.5.0-beta.3で導入したv5では、このphaseはterrain/sea-edgeを計算せず、全cell IDのorderだけを保持する。immutableな旧rulesetのsame-seed retryだけは旧計算を条件付きで再現する。`process_cells`は全cellとrelationを一括取得し、怪獣occupancy/definitionもWorld単位でbatch loadする。World移行前にspawnした生存個体もbatchへ含める。後続の[5.4.0](../../product/docs/releases/5.4.0-queue-provenance-energy.md)ではspawn時definition・最大HPの来歴を保持し、移動・弓の対象判定・damage・除去等のgameplay値を[CurrentMonsterDefinitionResolver](../../product/app/Application/CurrentMonsterDefinitionResolver.php)で現在Worldの同keyから解決する。船の占有判定と軍艦もこの完全なbatchを使う。導入時のsame-passでは、各cellで怪獣actorを通常の人口・facility処理より先に実行し、actorが存在したcellの通常処理を終えていた。後続のADR-0013では通常地上処理と通常怪獣passを分離し、現行経路ではミサイル解決・秘書の弓の後に通常怪獣passを実行する。この旧same-pass説明を現行の順序へ戻さない。
 
 movement、spawn trigger/candidate/type/HPは用途別labelled random streamを使い、raw seed/drawはpublic API/event projectionへ出さない。移動先が後続cellなら同じturnに再行動できる逐次因果を保ち、definition上限はturn-local `MonsterTurnBatch`で制限する。`moves_taken`はDBにもAPIにも置かない。
 

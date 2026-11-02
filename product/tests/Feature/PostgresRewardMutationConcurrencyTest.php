@@ -171,17 +171,6 @@ final class PostgresRewardMutationConcurrencyTest extends TestCase
         return $worker + ['database_path' => $databasePath];
     }
 
-    private function waitForFile(string $path, string $label): void
-    {
-        $deadline = microtime(true) + 10;
-        while (! is_file($path)) {
-            if (microtime(true) >= $deadline) {
-                $this->fail("{$label} barrier timed out.");
-            }
-            usleep(10_000);
-        }
-    }
-
     private function waitUntilBlockedByParent(int $workerPid, int $parentPid): void
     {
         $deadline = microtime(true) + 10;

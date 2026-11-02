@@ -45,6 +45,12 @@ final class SettlementOverbuildPolicy
     /** @param array<string, mixed> $metadata */
     private static function isEnabled(string $commandKey, array $metadata): bool
     {
+        $commandKey = match ($commandKey) {
+            'build_fast_farm' => 'build_farm',
+            'build_fast_factory' => 'build_factory',
+            default => $commandKey,
+        };
+
         return in_array($commandKey, self::COMMAND_KEYS, true)
             || (in_array($commandKey, self::VERSIONED_COMMAND_KEYS, true)
                 && ($metadata['settlement_overbuild'] ?? false) === true);

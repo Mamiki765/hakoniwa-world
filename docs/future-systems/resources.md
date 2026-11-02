@@ -1,5 +1,7 @@
 # 汎用資源システム
 
+> 読み方: 汎用資源設計の初期案とPR6・19・21時点の採用記録です。本文末の「生産・消費は未実装」は当時のscopeで、現行の生産・消費は[Turn実装](../../product/app/Application/CompleteTurnEngine.php)と[対象HEADのRuleset](../../product/docs/architecture/current-ruleset-baseline.md)で確認します。ledger等の一般化案全体の採用を示す資料ではありません。
+
 ## 目的
 
 資金、食料、魔力、工業力、研究力、鉱石、宇宙資源、地下資源を後から追加できるよう、資源の定義と国家の保有量を分離する。初期実装で全種類を有効にすることは目的ではない。

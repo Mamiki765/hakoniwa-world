@@ -26,6 +26,7 @@ final class RulesetPublisher
             'hakoniwa-2s-plus-v38' => 'hakoniwa/rulesets/hakoniwa-2s-plus-v38.php',
             'hakoniwa-2s-plus-v39' => 'hakoniwa/rulesets/hakoniwa-2s-plus-v39.php',
             'hakoniwa-2s-plus-v40' => 'hakoniwa/rulesets/hakoniwa-2s-plus-v40.php',
+            'hakoniwa-2s-plus-v41' => 'hakoniwa/rulesets/hakoniwa-2s-plus-v41.php',
         ];
         $predecessor = $predecessors[$settings['key'] ?? ''] ?? null;
         $replayingPredecessor = $predecessor !== null

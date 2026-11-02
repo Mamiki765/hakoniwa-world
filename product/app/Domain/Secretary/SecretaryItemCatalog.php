@@ -165,6 +165,13 @@ class SecretaryItemCatalog
      */
     public function definitions(): array
     {
+        // Only this constant-derived base catalog is shared. Callers receive
+        // copy-on-write arrays; overrides of definitions() still resolve normally.
+        static $catalog = null;
+        if ($catalog !== null) {
+            return $catalog;
+        }
+
         $definitions = [
             self::OLD_BOW => [
                 'key' => self::OLD_BOW,
@@ -457,7 +464,7 @@ class SecretaryItemCatalog
             ];
         }
 
-        return $definitions;
+        return $catalog = $definitions;
     }
 
     /** @return array<string, array{key: string, name: string, fixed_sale_price_money: int}> */
