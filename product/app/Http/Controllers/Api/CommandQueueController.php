@@ -321,6 +321,11 @@ final class CommandQueueController extends Controller
                     }
                     $applicable = ($definition->target_type === 'nation' || $cell !== null)
                         && (! $requiresNationTarget || $presentedTargetOptions !== []);
+                    $isRepair = ($projected['owner_nation_id'] ?? null) === $nation->id && WindPowerRepairPolicy::matches(
+                        $definition,
+                        $projected['facility_key'] ?? null,
+                        $projected['facility_operational_state'] ?? null,
+                    );
                     $presentedCost = WindPowerRepairPolicy::costMoney(
                         $definition,
                         $projected['facility_key'] ?? null,
@@ -373,6 +378,8 @@ final class CommandQueueController extends Controller
                         'command_group' => ($definition->metadata['command_group'] ?? 'normal') === 'paradox'
                             ? 'paradox'
                             : 'normal',
+                        // 故障した施設の修理になる時だけ true。一覧の先頭に「修理」として出す。
+                        'repair' => $isRepair,
                         'consumes_turn' => (bool) ($definition->metadata['consumes_turn'] ?? true),
                         'execution_phase' => $definition->execution_phase,
                         'initial_facility_capacity' => $initialCapacity === null ? null : [

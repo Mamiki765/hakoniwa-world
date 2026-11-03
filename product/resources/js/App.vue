@@ -1786,7 +1786,7 @@ async function abandonNation(): Promise<void> {
             <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
             <button v-if="secretary" type="button" class="notification-anchor" :aria-label="distortedStoneReminder ? '地底（歪んだ輝石の初回受取があります）' : marketAttention ? '地底（露店にお知らせがあります）' : undefined" @click="openUnderground">地底<span v-if="distortedStoneReminder || marketAttention" class="notification-dot" aria-hidden="true" /></button>
             <button type="button" @click="openOptions">オプション</button>
-            <a href="/manual">マニュアル</a>
+            <a class="site-manual-link" href="/manual">マニュアル</a>
         </nav>
         <button v-if="user" type="button" class="site-menu-toggle" :aria-expanded="siteMenuOpen" aria-controls="site-session-actions" aria-label="アカウントのメニュー" @click="siteMenuOpen = !siteMenuOpen">☰</button>
         <div id="site-session-actions" class="session-actions" :class="{ open: siteMenuOpen }" @click="siteMenuOpen = false">

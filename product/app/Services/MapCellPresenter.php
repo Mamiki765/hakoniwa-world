@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Application\CurrentMonsterDefinitionResolver;
 use App\Application\UserMonumentDesignService;
+use App\Domain\Command\WindPowerRepairPolicy;
 use App\Domain\Economy\PowerEconomyCalculator;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\FacilityRankPolicy;
@@ -153,6 +154,8 @@ final class MapCellPresenter
             'ship' => $ship,
             'monster' => $monster,
             'buried_treasure_visible' => $buriedTreasureVisible,
+            // 持ち主にだけ、修理を待つ施設の「！」を出す。
+            'needs_repair' => $isOwner && WindPowerRepairPolicy::needsRepair($cell->facility?->key, $cell->facility_operational_state),
             'asset' => $layers['completed'],
             'overlays' => $layers['overlays'],
             'aria_label' => $this->ariaLabel($cell, $capitalName === null ? $displayName : "{$capitalName} {$displayName}", $ownerNation, $details, $ship, $monster),

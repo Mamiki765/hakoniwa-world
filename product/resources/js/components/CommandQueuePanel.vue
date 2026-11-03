@@ -157,19 +157,27 @@ function commandNote(definition: CommandDefinition): string | null {
 const listedDefinitions = computed(() => definitions.value.filter(
     (definition) => definition.applicable && (allCommands.value || !isOutOfCondition(definition)),
 ));
+// 並びは「修理」→「真下に建築」→「通常」→「輝石」。そのマスでまずやりたい物を上に置く。
+// 修理はserverが付けた印で分け、通常の欄からは抜く（同じボタンを2回出さない）。
 const commandGroups = computed(() => [
-    ...([
-        { key: 'normal', label: '通常' },
-        { key: 'paradox', label: '輝石' },
-    ] as const).map((group) => ({
-        ...group,
-        definitions: listedDefinitions.value.filter((definition) => (definition.command_group ?? 'normal') === group.key),
-    })),
+    {
+        key: 'repair' as const,
+        label: '修理',
+        definitions: listedDefinitions.value.filter((definition) => definition.repair === true),
+    },
     {
         key: 'construction_ship' as const,
         label: '真下に建築',
         definitions: shipDefinitions.value.filter((definition) => allCommands.value || !isOutOfCondition(definition)),
     },
+    ...([
+        { key: 'normal', label: '通常' },
+        { key: 'paradox', label: '輝石' },
+    ] as const).map((group) => ({
+        ...group,
+        definitions: listedDefinitions.value.filter((definition) => definition.repair !== true
+            && (definition.command_group ?? 'normal') === group.key),
+    })),
 ].filter((group) => group.definitions.length > 0));
 const tailPosition = computed(() => {
     const limit = Math.max(1, queue.value.limit);
@@ -1260,8 +1268,8 @@ onBeforeUnmount(() => {
                 </p>
                 <p v-if="queueIsFull" class="sl-empty">計画が{{ queue.limit }}件で一杯です。どれかを取り消すと追加できます。</p>
                 <template v-for="group in commandGroups" :key="group.key">
-                    <div class="sl-cmd-head sub">
-                        <span>{{ group.label }}</span>
+                    <div class="sl-cmd-head sub" :class="{ repair: group.key === 'repair' }">
+                        <span><b v-if="group.key === 'repair'" class="sl-repair-mark" aria-hidden="true">!</b>{{ group.label }}</span>
                         <span v-if="group.key === 'paradox' && paradox" class="pd num" :title="paradox.description">{{ paradox.name }} {{ paradox.balance.toLocaleString() }} {{ paradox.unit }}</span>
                     </div>
                     <div class="command-grid sl-cmds">

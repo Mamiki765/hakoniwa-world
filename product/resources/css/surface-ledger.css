@@ -11,7 +11,7 @@ html[data-theme="system"] {
     --sl-turn: #b86a00; --sl-free: #12806f; --sl-good: #23803a; --sl-bad: #bf362e; --sl-paradox: #6f45b8;
     --sl-bar: #14263a; --sl-bar-ink: #e4ecf1;
     --sl-sea: #173f78; --sl-map-sel: #ffe36b; --sl-map-sel-2: #ffffff; --sl-map-own: rgba(255, 255, 255, .55); --sl-map-other: rgba(255, 150, 135, .8);
-    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
+    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-alert: #f08a24; --sl-map-alert-ink: #1d1206; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
     --sl-shade: rgba(10, 25, 45, .28); --sl-shadow: 0 8px 24px rgba(10, 25, 45, .28);
     --sl-radius: 3px;
     --sl-f-body: "BIZ UDPGothic", "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", sans-serif;
@@ -26,7 +26,7 @@ html[data-theme="dark"] {
     --sl-turn: #f0a63a; --sl-free: #4ecdb9; --sl-good: #63c279; --sl-bad: #f2776c; --sl-paradox: #b594f0;
     --sl-bar: #060d15; --sl-bar-ink: #dbe6f0;
     --sl-sea: #173f78; --sl-map-sel: #ffe36b; --sl-map-sel-2: #ffffff; --sl-map-own: rgba(255, 255, 255, .55); --sl-map-other: rgba(255, 150, 135, .8);
-    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
+    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-alert: #f08a24; --sl-map-alert-ink: #1d1206; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
     --sl-shade: rgba(0, 0, 0, .5); --sl-shadow: 0 8px 24px rgba(0, 0, 0, .5);
     --sl-radius: 3px;
     --sl-f-body: "BIZ UDPGothic", "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", sans-serif;
@@ -52,7 +52,7 @@ html[data-theme="old-dark"] {
     --sl-turn: var(--coral-dark); --sl-free: var(--success); --sl-good: var(--success); --sl-bad: var(--danger); --sl-paradox: var(--info);
     --sl-bar: var(--toast-surface); --sl-bar-ink: var(--toast-ink);
     --sl-sea: #83bccc; --sl-map-sel: var(--coral); --sl-map-sel-2: #ffffff; --sl-map-own: var(--gold); --sl-map-other: rgba(255, 150, 135, .8);
-    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
+    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-alert: #f08a24; --sl-map-alert-ink: #1d1206; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
     --sl-shade: rgba(18, 63, 73, .3); --sl-shadow: var(--shadow);
     --sl-radius: 0px;
     --sl-f-body: Inter, "Noto Sans JP", "Yu Gothic UI", sans-serif;
@@ -68,7 +68,7 @@ html[data-theme="black"] {
     --sl-turn: var(--gold); --sl-free: var(--coral); --sl-good: var(--success); --sl-bad: var(--danger); --sl-paradox: var(--navy-light);
     --sl-bar: #1a1c1e; --sl-bar-ink: var(--ink);
     --sl-sea: #173f78; --sl-map-sel: #ffe36b; --sl-map-sel-2: #ffffff; --sl-map-own: rgba(255, 255, 255, .55); --sl-map-other: rgba(255, 150, 135, .8);
-    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
+    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-alert: #f08a24; --sl-map-alert-ink: #1d1206; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
     --sl-shade: rgba(0, 0, 0, .5); --sl-shadow: 0 8px 24px rgba(0, 0, 0, .5);
     --sl-radius: 3px;
     --sl-f-body: Inter, "Noto Sans JP", "Yu Gothic UI", sans-serif;
@@ -82,7 +82,7 @@ html[data-theme="autumn"] {
     --sl-turn: var(--warning); --sl-free: var(--success); --sl-good: var(--success); --sl-bad: var(--danger); --sl-paradox: var(--info);
     --sl-bar: var(--navy-solid); --sl-bar-ink: var(--on-solid);
     --sl-sea: #173f78; --sl-map-sel: #ffe36b; --sl-map-sel-2: #ffffff; --sl-map-own: rgba(255, 255, 255, .55); --sl-map-other: rgba(255, 150, 135, .8);
-    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
+    --sl-map-vision: #42d878; --sl-map-mark-ink: #14263a; --sl-map-alert: #f08a24; --sl-map-alert-ink: #1d1206; --sl-map-tag: rgba(8, 28, 33, .78); --sl-map-tag-ink: #ffffff;
     --sl-shade: rgba(0, 0, 0, .25); --sl-shadow: 0 4px 14px rgba(0, 0, 0, .25);
     --sl-radius: 0px;
     --sl-f-body: Inter, "Noto Sans JP", "Yu Gothic UI", sans-serif;
@@ -235,6 +235,8 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 @media (prefers-reduced-motion: reduce) { .sl .map-cell.selected { animation: none; } }
 .sl .map-cell small { background: var(--sl-map-tag); color: var(--sl-map-tag-ink); border: 0; border-radius: 0; }
 .map-cell .plan-mark { position: absolute; right: 0; top: 0; z-index: 5; min-width: 13px; height: 13px; padding: 0 2px; background: var(--sl-map-sel); color: var(--sl-map-mark-ink); font: 10px/13px var(--sl-f-num); text-align: center; pointer-events: none; }
+/* 修理を待つ施設の「！」。予約番号と同じ大きさで左上に置き、色だけ警告の橙に分ける。 */
+.map-cell .repair-mark { position: absolute; left: 0; top: 0; z-index: 5; min-width: 13px; height: 13px; padding: 0 2px; background: var(--sl-map-alert); color: var(--sl-map-alert-ink); font: 700 10px/13px var(--sl-f-num); text-align: center; pointer-events: none; }
 .sl .cell-tooltip { width: auto; max-width: min(260px, calc(100% - 16px)); display: flex; flex-wrap: wrap; gap: 0 10px; padding: 4px 8px; border: 1px solid var(--sl-line); border-radius: var(--sl-radius); background: var(--sl-panel); color: var(--sl-ink); box-shadow: var(--sl-shadow); font-size: 12px; }
 .sl .cell-tooltip strong { flex-basis: 100%; color: var(--sl-ink); font-size: 13px; }
 .sl .map-empty-note { margin: 0; padding: 2px 8px; background: var(--sl-panel); color: var(--sl-ink-2); font-size: 11px; }
@@ -269,6 +271,8 @@ html .sl h2 { font: var(--sl-w-head) 14px var(--sl-f-head); display: block; min-
 .sl-cmd-head h3 { font: var(--sl-w-head) 14px var(--sl-f-head); }
 .sl-cmd-head.sub { position: static; padding: 4px 10px 0; color: var(--sl-ink-2); font-size: 12px; }
 .sl-cmd-head.sub .pd { margin-left: auto; color: var(--sl-paradox); }
+.sl-cmd-head.sub.repair { color: var(--sl-ink); }
+.sl-repair-mark { display: inline-block; min-width: 13px; height: 13px; margin-right: 4px; background: var(--sl-map-alert); color: var(--sl-map-alert-ink); font: 700 10px/13px var(--sl-f-num); text-align: center; vertical-align: 1px; }
 .sl-legend { font-size: 11px; color: var(--sl-ink-2); margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
 .sl-legend span { display: inline-flex; gap: 3px; align-items: center; }
 .sl-all { font-size: 11px; color: var(--sl-ink-2); display: inline-flex; align-items: center; gap: 3px; }

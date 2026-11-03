@@ -850,6 +850,8 @@ export interface MapCell {
     owner_name: string | null;
     within_viewer_visibility: boolean;
     buried_treasure_visible: boolean;
+    // 持ち主にだけ true。修理を待つ施設（故障した風力発電所など）。
+    needs_repair?: boolean;
     details: MapCellDetail[];
     ship?: ShipOverlay | null;
     monster: MonsterOverlay | null;
@@ -900,6 +902,8 @@ export interface CommandDefinition {
     cost_money: number;
     cost_paradox: number;
     command_group: 'normal' | 'paradox';
+    // 故障した施設の修理になる時だけ true（serverが判定）。
+    repair?: boolean;
     consumes_turn: boolean;
     execution_phase: string;
     initial_facility_capacity: null | {

@@ -151,7 +151,7 @@ a { color: var(--navy); }
 .brand span { color: var(--coral); }
 .app-version { color: var(--muted); font-size: .62rem; font-weight: 750; letter-spacing: .04em; }
 .site-header nav, .session-actions { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-.site-header nav a { white-space: nowrap; flex-shrink: 0; }
+.site-header nav a { display: inline-flex; align-items: center; white-space: nowrap; flex-shrink: 0; }
 .site-header nav button, .session-actions button, .session-actions a {
     border: 0;
     background: transparent;
@@ -1394,6 +1394,8 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .site-header.has-user .app-version { display: none; }
 .site-header.has-user nav { order: 0; grid-column: auto; width: auto; min-width: 0; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
 .site-header.has-user nav::-webkit-scrollbar { display: none; }
+/* 狭い幅で項目が横にあふれても、マニュアルだけは右端に残して見えるようにする（INQ-000018）。 */
+.site-header.has-user nav .site-manual-link { position: sticky; right: 0; margin-left: auto; background: var(--paper); box-shadow: -6px 0 6px -4px var(--paper); }
 .site-header.has-user :is(nav button, nav a) { min-height: 34px; padding: 4px 10px; }
 .site-header.has-user .site-menu-toggle { display: block; min-width: 38px; min-height: 34px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
 .site-header.has-user .session-actions { display: none; }
