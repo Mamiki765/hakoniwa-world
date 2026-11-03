@@ -82,6 +82,7 @@
 - 別pathが必要なのは、ordering、RNG、transaction、lock、persistence、eventなど実行契約そのものが異なる場合に限る。
 - 同じ責務の判定・definition解決を複数箇所へコピーしない。表示用の整形や見せ方は画面ごとに変えてよい。
 - 共通contractが実在するときだけ小さなshared abstractionへ集約し、将来用のgeneric frameworkを先行実装しない。
+- 画面（`product/resources/`）の見た目・配置・テーマ・スマホ幅を変える前に`product/docs/architecture/frontend-design-guide.md`を読み、そこにあるOwner決定の配置と色・書体のtoken規則を守る。
 
 ---
 
