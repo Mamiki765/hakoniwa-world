@@ -39,6 +39,7 @@ import { formatAnnouncementDate } from './formatters/date';
 import { formatExactMoney } from './formatters/money';
 import { useMapState } from './state/mapState';
 import { useLobbyRanking } from './state/lobbyRanking';
+import { useNavOverflow } from './state/navOverflow';
 import { useOwnBoardUnread } from './state/ownBoardUnread';
 import { useSurfaceLedger } from './state/surfaceLedger';
 import type {
@@ -189,6 +190,11 @@ const {
 } = useLobbyRanking(rankings);
 const lobbyNewsTab = ref<'major' | 'log'>('log');
 const siteMenuOpen = ref(false);
+const siteNav = ref<HTMLElement | null>(null);
+// 右端から先に「☰」へ回す。TOPと自島へは帯に残す。
+const { overflowed: navOverflow, schedule: scheduleNavOverflow } = useNavOverflow(siteNav, ['manual', 'options', 'trading', 'underground', 'secretary']);
+// ☰ が無い（ログイン前）時は回さない。帯がそのまま折り返す。
+const navInMenu = (key: string) => user.value !== null && navOverflow.value.includes(key);
 const ledgerParadox = ref<ParadoxBalance | null>(null);
 const islandCommentDraft = ref<string | null>(null);
 const islandCommentInput = ref<HTMLInputElement | null>(null);
@@ -208,6 +214,18 @@ const ownBoard = useOwnBoardUnread(
     computed(() => page.value === 'island' && nation.value?.capital != null && mapSpace.value !== null),
 );
 const boardUnread = ownBoard.unread;
+const secretaryNavLabel = computed(() => collectionUnclaimed.value && secretary.value
+    ? `${secretary.value.header_label}（図鑑に受け取れるプレゼントがあります）`
+    : undefined);
+const undergroundAttention = computed(() => distortedStoneReminder.value || marketAttention.value);
+const undergroundNavLabel = computed(() => distortedStoneReminder.value
+    ? '地底（歪んだ輝石の初回受取があります）'
+    : marketAttention.value ? '地底（露店にお知らせがあります）' : undefined);
+// ☰ に回した項目に赤丸があれば、☰ にも付ける。
+const menuAttention = computed(() => (navInMenu('secretary') && collectionUnclaimed.value > 0)
+    || (navInMenu('underground') && undergroundAttention.value));
+// 帯の項目や秘書の名前が変わったら、入りきるかを測り直す。
+watch(() => [user.value?.id, nation.value?.id, secretary.value?.header_label], () => void nextTick(scheduleNavOverflow));
 // 既読にするのは、伝言板が画面に出ていて、本文を取得して表示できている分だけ。
 // ページが裏にあるあいだは既読にしない。前面へ戻ったときに、表示できている分をあらためて既読にする。
 watch(() => [ownBoard.displayed.value, ownBoard.bodyShown.value, ledger.boardVisible.value, page.value, ownBoard.pageVisible.value] as const, ([displayed, shown, visible, currentPage, pageVisible]) => {
@@ -1779,19 +1797,27 @@ async function abandonNation(): Promise<void> {
         <a class="brand" href="#" @click.prevent="page = 'home'">
             箱庭諸島<span>２S＋</span><small class="app-version">ver {{ applicationVersion }}</small>
         </a>
-        <nav aria-label="主要ナビゲーション">
+        <nav ref="siteNav" aria-label="主要ナビゲーション">
             <button type="button" @click="page = 'home'">TOP</button>
             <button v-if="nation" type="button" class="notification-anchor" :aria-label="boardUnread ? '自島へ（伝言板に新しい伝言があります）' : undefined" @click="openOwnIsland">自島へ<span v-if="boardUnread" class="notification-dot" aria-hidden="true" /></button>
-            <button v-if="secretary" type="button" class="notification-anchor" :aria-label="collectionUnclaimed ? `${secretary.header_label}（図鑑に受け取れるプレゼントがあります）` : undefined" @click="openSecretary">{{ secretary.header_label }}<span v-if="collectionUnclaimed" class="notification-dot" aria-hidden="true" /></button>
-            <button v-if="nation" type="button" @click="page = 'trading-post'">交易場</button>
-            <button v-if="secretary" type="button" class="notification-anchor" :aria-label="distortedStoneReminder ? '地底（歪んだ輝石の初回受取があります）' : marketAttention ? '地底（露店にお知らせがあります）' : undefined" @click="openUnderground">地底<span v-if="distortedStoneReminder || marketAttention" class="notification-dot" aria-hidden="true" /></button>
-            <button type="button" @click="openOptions">オプション</button>
-            <a class="site-manual-link" href="/manual">マニュアル</a>
+            <button v-if="secretary" v-show="!navInMenu('secretary')" data-nav-key="secretary" type="button" class="notification-anchor" :aria-label="secretaryNavLabel" @click="openSecretary">{{ secretary.header_label }}<span v-if="collectionUnclaimed" class="notification-dot" aria-hidden="true" /></button>
+            <button v-if="nation" v-show="!navInMenu('trading')" data-nav-key="trading" type="button" @click="page = 'trading-post'">交易場</button>
+            <button v-if="secretary" v-show="!navInMenu('underground')" data-nav-key="underground" type="button" class="notification-anchor" :aria-label="undergroundNavLabel" @click="openUnderground">地底<span v-if="undergroundAttention" class="notification-dot" aria-hidden="true" /></button>
+            <button v-show="!navInMenu('options')" data-nav-key="options" type="button" @click="openOptions">オプション</button>
+            <a v-show="!navInMenu('manual')" data-nav-key="manual" href="/manual">マニュアル</a>
         </nav>
-        <button v-if="user" type="button" class="site-menu-toggle" :aria-expanded="siteMenuOpen" aria-controls="site-session-actions" aria-label="アカウントのメニュー" @click="siteMenuOpen = !siteMenuOpen">☰</button>
+        <button v-if="user" type="button" class="site-menu-toggle notification-anchor" :aria-expanded="siteMenuOpen" aria-controls="site-session-actions" :aria-label="menuAttention ? 'メニュー（お知らせがあります）' : 'メニュー'" @click="siteMenuOpen = !siteMenuOpen">☰<span v-if="menuAttention" class="notification-dot" aria-hidden="true" /></button>
         <div id="site-session-actions" class="session-actions" :class="{ open: siteMenuOpen }" @click="siteMenuOpen = false">
             <template v-if="user">
                 <small class="site-menu-version">ver {{ applicationVersion }}</small>
+                <!-- 上の帯に入りきらなかった項目。帯と同じ並びで出す。 -->
+                <div v-if="navOverflow.length > 0" class="session-nav-overflow">
+                    <button v-if="secretary && navInMenu('secretary')" type="button" class="notification-anchor" :aria-label="secretaryNavLabel" @click="openSecretary">{{ secretary.header_label }}<span v-if="collectionUnclaimed" class="notification-dot" aria-hidden="true" /></button>
+                    <button v-if="nation && navInMenu('trading')" type="button" @click="page = 'trading-post'">交易場</button>
+                    <button v-if="secretary && navInMenu('underground')" type="button" class="notification-anchor" :aria-label="undergroundNavLabel" @click="openUnderground">地底<span v-if="undergroundAttention" class="notification-dot" aria-hidden="true" /></button>
+                    <button v-if="navInMenu('options')" type="button" @click="openOptions">オプション</button>
+                    <a v-if="navInMenu('manual')" href="/manual">マニュアル</a>
+                </div>
                 <div class="session-user-actions">
                     <div class="session-account-actions">
                         <span>{{ user.display_name }}</span>

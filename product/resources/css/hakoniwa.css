@@ -1394,8 +1394,9 @@ html:is([data-theme="dark"], [data-theme="old-dark"]) .compensation-banner, html
 .site-header.has-user .app-version { display: none; }
 .site-header.has-user nav { order: 0; grid-column: auto; width: auto; min-width: 0; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
 .site-header.has-user nav::-webkit-scrollbar { display: none; }
-/* 狭い幅で項目が横にあふれても、マニュアルだけは右端に残して見えるようにする（INQ-000018）。 */
-.site-header.has-user nav .site-manual-link { position: sticky; right: 0; margin-left: auto; background: var(--paper-overlay, var(--paper)); box-shadow: -6px 0 6px -4px var(--paper-overlay, var(--paper)); }
+/* 帯に入りきらず「☰」へ回した項目（INQ-000018）。アカウントの項目と線で分ける。 */
+.site-header.has-user .session-actions.open .session-nav-overflow { display: grid; justify-items: stretch; gap: 2px; padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.site-header.has-user .site-menu-toggle .notification-dot { top: 3px; right: 3px; }
 .site-header.has-user :is(nav button, nav a) { min-height: 34px; padding: 4px 10px; }
 .site-header.has-user .site-menu-toggle { display: block; min-width: 38px; min-height: 34px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
 .site-header.has-user .session-actions { display: none; }
