@@ -51,6 +51,7 @@
 | 5.8.2 ルールセット設定のJSON解読をモデル単位で再利用 | [5.8.2](../product/docs/releases/5.8.2.md) |
 | 5.8.3 休眠島のお守り消費によるTurn停止の修正 | [5.8.3](../product/docs/releases/5.8.3.md) |
 | 5.9.0 PR統合・高速建設の村置換・v42手動拡張の陸地起点 | [5.9.0](../product/docs/releases/5.9.0.md) |
+| 5.9.1 マニュアル・故障修理・海底工作を見つけやすく（上の帯の☰への退避） | [5.9.1](../product/docs/releases/5.9.1.md) |
 | 外部管理庫の現在地・作業引継ぎへの入口 | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md) |
