@@ -1,5 +1,14 @@
 # Deterministic turn randomness
 
+本書のseed導出、bounded integer、shuffle、固定vectorは乱数の技術契約である。
+一方、「この基盤では未接続」「TurnStateはlaunch intentだけ」というscope記述は基盤導入時点の記録で、
+現行のミサイル処理やTurnState全体の未実装宣言ではない。現行の用途labelは
+[TurnRandomStreamFactory](../../product/app/Domain/Turn/TurnRandomStreamFactory.php)、
+乱数演算は[DeterministicRandomStream](../../product/app/Domain/Turn/DeterministicRandomStream.php)、
+attemptごとの生成は[TurnRunner](../../product/app/Application/TurnRunner.php)、
+現在の状態と処理の接続は[TurnState](../../product/app/Domain/Turn/TurnState.php)と
+[Turn pipeline](turn-pipeline.md)を参照する。
+
 ## Status and scope
 
 T-01のDecisionとして、実ターン処理が使う乱数、stable enumeration、shuffle、turn-scoped stateの共通契約を確定する。この基盤自体はgameplay effectを実行せず、required phase stubをimplementedへ変更しない。
@@ -53,7 +62,7 @@ blockをcounter順に連結し、4 bytesごとにunsigned 32-bit big-endian word
 2. `u >= limit`ならrejectして次のwordを読む。
 3. `min + (u mod W)`を返す。
 
-これによりmodulo biasを避ける。同一値だけのrangeも許し、範囲外、`min > max`、32-bitでないPHP runtimeはfail-closedとする。
+これによりmodulo biasを避ける。同一値だけのrangeも許し、範囲外と`min > max`はfail-closedとする。draw入力の範囲はsigned 32-bitだが、PHP runtimeは64-bit integerを必須とし、それ未満の環境を拒否する。
 
 ## Deterministic shuffle and stable inputs
 

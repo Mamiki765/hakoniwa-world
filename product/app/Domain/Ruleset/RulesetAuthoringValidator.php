@@ -2211,6 +2211,10 @@ final class RulesetAuthoringValidator
             }
             $this->persistedNonNegativeInteger($definition['sort_order'], "{$path}.sort_order");
             $metadata = $this->map($definition['metadata'], "{$path}.metadata");
+            if ($commandKey === 'territory_expand' && $authoredRulesetVersion >= 42
+                && ($metadata['adjacency']['source_terrain'] ?? null) !== 'land') {
+                throw new DomainException("{$path}.metadata.adjacency.source_terrain must select land for manual expansion origins.");
+            }
             if (array_key_exists('repeat_quantity', $metadata)) {
                 $this->boolean($metadata['repeat_quantity'], "{$path}.metadata.repeat_quantity");
                 if ($commandKey !== 'attraction'

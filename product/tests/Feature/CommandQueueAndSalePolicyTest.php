@@ -208,6 +208,16 @@ class CommandQueueAndSalePolicyTest extends TestCase
             ->assertJsonPath('data.candidate_count', 31)
             ->assertJsonPath('data.queue.explicit_count', 30);
         $items = collect($response->json('data.queue.items'));
+        $this->assertDatabaseHas('nation_command_queue_bulk_requests', [
+            'request_key' => $requestKey,
+            'candidate_count' => 31,
+            'inserted_count' => 30,
+            'truncated_count' => 1,
+        ]);
+        $audit = json_decode((string) DB::table('audit_events')
+            ->where('event_type', 'command.bulk_inserted')->value('metadata'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $audit['truncated_count']);
+        $this->assertSame(0, NationCommandQueueItem::query()->where('status', 'cancelled')->count());
         $this->assertSame(range(1, 30), $items->pluck('queue_position')->all());
         $this->assertSame(
             $targets->take(30)->map(fn (MapCell $cell): array => [(int) $cell->x, (int) $cell->y])->all(),
@@ -529,6 +539,7 @@ class CommandQueueAndSalePolicyTest extends TestCase
             'target_x' => $normalCell->x,
             'target_y' => $normalCell->y,
             'quantity' => $monumentId,
+            'parameters' => ['target_nation_id' => $targetNation->id],
             'position' => 1,
             'request_key' => (string) Str::uuid(),
             'expected_version' => 1,
@@ -587,6 +598,30 @@ class CommandQueueAndSalePolicyTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.queue.items.3.command_suffix', '（自爆）')
             ->assertJsonPath('data.queue.items.3.command_suffix_tone', 'danger');
+
+        $monumentName = MonumentDefinition::query()->findOrFail($monumentId)->name;
+        $queries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+        $listed = $this->getJson($queuePath)->assertOk()
+            ->assertJsonPath('data.items.0.command_suffix', null)
+            ->assertJsonPath('data.items.1.command_suffix', "（{$targetNation->name}）")
+            ->assertJsonPath('data.items.3.command_suffix', '（自爆）');
+        $this->assertSame(
+            [$monumentId, $monumentId],
+            array_column(array_slice($listed->json('data.items'), 0, 2), 'quantity'),
+        );
+        $this->assertSame(
+            [$monumentName],
+            array_values(array_unique(array_column(array_slice($listed->json('data.items'), 0, 2), 'quantity_label'))),
+        );
+        $this->assertLessThanOrEqual(1, collect($queries)->filter(
+            static fn (string $sql): bool => str_contains($sql, 'from "monument_definitions"'),
+        )->count(), 'Repeated monument selectors must share one label lookup.');
+        $this->assertLessThanOrEqual(1, collect($queries)->filter(
+            static fn (string $sql): bool => str_contains($sql, 'from "nations"') && str_contains($sql, 'select "name"'),
+        )->count(), 'Repeated target Nations must share one name lookup.');
     }
 
     public function test_projected_water_transitions_do_not_retain_nation_ownership(): void
@@ -965,6 +1000,10 @@ class CommandQueueAndSalePolicyTest extends TestCase
         $this->assertFalse(collect($worldQueries)->contains(
             static fn (string $sql): bool => str_contains($sql, 'for update'),
         ));
+        $this->assertFalse(collect($queries)->contains(
+            static fn (string $sql): bool => str_contains($sql, 'from "map_cells"')
+                || str_contains($sql, 'from "monument_definitions"'),
+        ), 'An empty queue must not fetch target cells or selector labels.');
     }
 
     public function test_definition_catalog_projects_thirty_item_queue_once_and_batches_facility_definitions(): void
@@ -1018,6 +1057,21 @@ class CommandQueueAndSalePolicyTest extends TestCase
         );
         $this->assertLessThanOrEqual(2, $facilityQueries->count(), implode("\n", $facilityQueries->all()));
         $this->assertLessThanOrEqual(44, count($queries), 'Catalog query count regressed: '.count($queries));
+
+        $queries = [];
+        $listed = $this->getJson(
+            "/api/v1/nations/{$nation->id}/map-spaces/{$mapSpace->id}/command-queue",
+        )->assertOk()->assertJsonCount(30, 'data.items');
+        $this->assertSame('build_defense_facility', $listed->json('data.items.0.command_key'));
+        $this->assertNull($listed->json('data.items.0.command_suffix'));
+        $this->assertSame(range(1, 30), array_column($listed->json('data.items'), 'queue_position'));
+        foreach (['map_cells', 'terrain_definitions', 'facility_definitions'] as $table) {
+            $tableQueries = collect($queries)->filter(
+                static fn (string $sql): bool => str_contains($sql, 'from "'.$table.'"'),
+            );
+            $this->assertLessThanOrEqual(1, $tableQueries->count(),
+                "Queue response must batch {$table} reads: ".$tableQueries->count());
+        }
     }
 
     public function test_member_can_add_list_reorder_and_cancel_without_executing_commands(): void

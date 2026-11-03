@@ -1,8 +1,12 @@
 # Chunk storage
 
+本書は初期の地図・chunk保存設計を起点にした記録である。導入時点のscopeと、
+現在のTurn・event・retryの実装状態を分ける。現行の実行境界は
+[Turn pipeline](turn-pipeline.md)と[Turn randomness](turn-randomness.md)を参照する。
+
 ## 採用方式
 
-PostgreSQL の relational rows を正本とし、`map_cells` を16×16の論理 chunk に分ける。map 全体を巨大 JSON として保存しない。turn、event、outbox、snapshot は後続 scope である。
+PostgreSQL の relational rows を正本とし、`map_cells` を16×16の論理 chunk に分ける。map 全体を巨大 JSON として保存しない。turn、event、outbox、snapshotを後続scopeとしたのは、この初期chunk設計の実装範囲であり、現行システム全体の未実装宣言ではない。
 
 ## Schema
 
@@ -68,4 +72,4 @@ GET /api/v1/map-spaces/{mapSpace}/chunks/{chunkX}/{chunkY}
 
 ## Update invariant
 
-セル変更と対応 chunk version 更新は同じ transaction で行う。複数 chunk を lock するときは `(map_space_id, chunk_y, chunk_x)` の順に統一する。turn 用の lock・retry policy は turn engine の設計 gate で決める。
+セル変更と対応 chunk version 更新は同じ transaction で行う。複数 chunk を lock するときは `(map_space_id, chunk_y, chunk_x)` の順に統一する。現行Turnのlock・transaction・retry境界は[Turn pipeline](turn-pipeline.md)を参照する。初期のturn engine設計gateを現在も未決として扱わない。

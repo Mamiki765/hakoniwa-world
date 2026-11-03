@@ -2,7 +2,7 @@
 
 ## 状態
 
-MVPの認証domain modelと安全条件は確定済み。Laravelで使用する具体的なOAuth package、SPA session方式、配信origin、redirect UXは未決定であり、`docs/open-questions.md`の`AUTH-*`を実装前に確認する。
+MVPの認証domain modelと安全条件は確定済み。具体的なOAuth package、session方式、配信origin、redirect UXは後続の[ADR-0006](../decisions/ADR-0006-oauth-packages.md)と末尾の「MVP実装記録」で決定済み。以下のpackage候補・未決定一覧は選定前の記録として読み、現在の実装前gateは[open-questionsのAUTH項目](../open-questions.md)と現行codeを確認する。
 
 ## MVP範囲
 
@@ -169,7 +169,7 @@ package選定にかかわらず、次を必須とする。
 
 ## Package選定の境界
 
-現時点では具体packageを決定しない。確認候補は次の通り。
+以下はADR-0006での決定前に用いた確認候補である。現在の採用状態は同ADR、[OAuth設定手順](../operations/oauth-setup.md)、[OAuthController](../../product/app/Http/Controllers/Auth/OAuthController.php)を確認する。
 
 - Laravel Socialite。
 - Discord対応の追加Socialite providerまたは同等adapter。
@@ -194,7 +194,7 @@ package選定にかかわらず、次を必須とする。
 
 ## 未決定・延期事項
 
-`docs/open-questions.md`を正本とし、次を実装中に暗黙決定しない。
+以下のうちpackage・Sanctum採否・同一origin・redirect UXはADR-0006とMVP実装記録へ進んでいる。provider障害時の復旧・管理者復旧・User merge・解除UI・追加認証は、[open-questions](../open-questions.md)の現行gateを正本とし、暗黙決定しない。
 
 - Discord用の具体的なSocialite provider。
 - Sanctum採用の有無。

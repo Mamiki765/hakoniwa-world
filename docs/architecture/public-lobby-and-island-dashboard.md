@@ -2,7 +2,7 @@
 
 ## Scope
 
-Roadmap PR5 は、共有世界の公開閲覧、自島中心の responsive UI、開発計画の予約・編集境界を提供する。turn runner、command execution、資金・地形・施設・資源の変更は行わない。
+Roadmap PR5 は、共有世界の公開閲覧、自島中心の responsive UI、開発計画の予約・編集境界を提供した。以下のPR5 scope・公開route/cache・延期事項は導入時の記録である。現在のrouteや制限は対象HEADのcode、計画APIは[一括計画・保管庫API](../../product/docs/architecture/bulk-plans-and-vault-api.md)、lifecycleは[Nation lifecycle](nation-lifecycle.md)を確認する。PR5自体はturn runner、command execution、資金・地形・施設・資源の変更を行わなかった。
 
 canonical coordinate は PR4 の staggered square-tile x/y である。現行 API、TypeScript、PHP、UI に q/r を再導入しない。
 
@@ -62,7 +62,7 @@ ver 1.3.0の公開TOPランキングだけは全Nationの`nation_awards`と正�
 
 ## Effective 20-slot plan
 
-DBは明示commandだけを `nation_command_queue_items` に保存する。APIは常に20件のeffective planを返し、未使用positionを次のplaceholderで補う。
+DBは明示commandだけを `nation_command_queue_items` に保存する。PR5導入時の上限は20件だった。現在のeffective planの件数は[CommandQueueService](../../product/app/Application/CommandQueueService.php)がWorldのRulesetから解決する上限を使い、未使用positionを次のplaceholderで補う。
 
 ```json
 {
@@ -73,11 +73,11 @@ DBは明示commandだけを `nation_command_queue_items` に保存する。API�
 }
 ```
 
-明示commandは `kind: explicit`、`editable: true` とする。挿入位置を省略した場合は最初のautomatic slotへ追加する。位置を指定した場合は、その位置以降の明示commandだけを後ろへshiftする。20を超える明示commandを黙って破棄せず422を返す。取消後は残る明示commandを左詰めし、末尾をautomatic financeで補完する。
+明示commandは `kind: explicit`、`editable: true` とする。挿入位置を省略した場合は最初のautomatic slotへ追加する。位置を指定した場合は、その位置以降の明示commandだけを後ろへshiftする。Rulesetの上限を超える明示commandを黙って破棄せず422を返す。取消後は残る明示commandを左詰めし、末尾をautomatic financeで補完する。
 
 reorderは全明示itemのIDとpositionを送る。optimistic queue versionを維持し、drag以外にkeyboardの前後移動を提供する。
 
-automatic financeの実行、`auto_finance_streak`、`last_player_plan_turn`、720turnでの休眠遷移はturn runner／nation lifecycle PRへ延期する。PR5は表示用placeholderと拡張境界だけを持ち、loginだけでstreakを解除する等の挙動を決めない。
+automatic financeの実行、`auto_finance_streak`、`last_player_plan_turn`、720turnでの休眠遷移は、PR5導入時にはturn runner／nation lifecycle PRへ延期した。この延期は現在の未実装判定ではない。後続の現行lifecycleは[Nation lifecycle](nation-lifecycle.md)と[ADR-0014](../decisions/ADR-0014-ver-2.4.0-nation-dormancy.md)を参照する。PR5は表示用placeholderと拡張境界だけを持ち、loginだけでstreakを解除する等の未決定gameplayを追加しなかった。
 
 ## Universal development-plan quantity
 

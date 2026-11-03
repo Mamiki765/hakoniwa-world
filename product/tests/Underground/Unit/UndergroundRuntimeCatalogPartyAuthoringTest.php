@@ -14,6 +14,9 @@ final class UndergroundRuntimeCatalogPartyAuthoringTest extends TestCase
 {
     public function test_catalogs_accept_safe_authored_values_without_requiring_current_balance_literals(): void
     {
+        $player = app(UndergroundAlphaV1PlayerCatalog::class);
+        $foundation = $player->laboratoryCatalog();
+        $player->trialCatalog('trial_01');
         $trial = config('underground-runtime.trials.trial_01');
         array_pop($trial['encounters']);
         array_pop($trial['rewards']);
@@ -33,9 +36,11 @@ final class UndergroundRuntimeCatalogPartyAuthoringTest extends TestCase
         ]);
 
         $runtime = app(UndergroundRuntimeCatalog::class);
-        $player = app(UndergroundAlphaV1PlayerCatalog::class);
         $equipment = app(UndergroundEquipmentCatalog::class);
 
+        // Reuse is the performance contract; authored values still come from config.
+        $this->assertSame($player, app(UndergroundAlphaV1PlayerCatalog::class));
+        $this->assertSame($foundation, $player->laboratoryCatalog());
         $this->assertSame([80, 2], [$runtime->maxRounds(), $runtime->battleLogRetentionHours()]);
         $this->assertContains('configured_trial', $runtime->trialKeys());
         $this->assertSame([9, 30, 3], [
@@ -61,10 +66,13 @@ final class UndergroundRuntimeCatalogPartyAuthoringTest extends TestCase
 
     public function test_hunting_ground_enemy_counts_are_authored_per_party_size_without_touching_rewards(): void
     {
-        $before = app(UndergroundAlphaV1PlayerCatalog::class)->explorationEncounter('subterranean_rat', 'shallow_caves');
-        config(['underground-alpha-v1.exploration.grounds.shallow_caves.enemy_count_by_party_size' => [1 => 1, 2 => 1, 3 => 2, 4 => 3]]);
         $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
+        $exploration = $catalog->explorationCatalog();
+        $this->assertSame($exploration, $catalog->explorationCatalog());
+        $before = $catalog->explorationEncounter('subterranean_rat', 'shallow_caves');
+        config(['underground-alpha-v1.exploration.grounds.shallow_caves.enemy_count_by_party_size' => [1 => 1, 2 => 1, 3 => 2, 4 => 3]]);
 
+        $this->assertNotSame($exploration, $catalog->explorationCatalog());
         $this->assertSame([1, 1, 2, 3], array_map(
             fn (int $size): int => $catalog->explorationEnemyCountForPartySize('shallow_caves', $size),
             [1, 2, 3, 4],
@@ -78,6 +86,76 @@ final class UndergroundRuntimeCatalogPartyAuthoringTest extends TestCase
         );
         $this->expectException(InvalidArgumentException::class);
         $catalog->explorationEnemyCountForPartySize('shallow_caves', 5);
+    }
+
+    public function test_catalog_reuse_refreshes_manifest_bytes_and_container_scope(): void
+    {
+        $originalConfigPath = $this->app->configPath();
+        $foundationPath = 'underground/balance/foundation-v4.json';
+        $trialPath = config('underground-runtime.trials.trial_01.balance_manifest');
+        $foundation = json_decode(file_get_contents(config_path($foundationPath)), true, flags: JSON_THROW_ON_ERROR);
+        $trial = json_decode(file_get_contents(config_path($trialPath)), true, flags: JSON_THROW_ON_ERROR);
+        $enemyKey = array_key_first($foundation['enemies']);
+        $trialEnemyKey = array_key_first($trial['enemies']);
+        $foundation['enemies'][$enemyKey]['label'] = 'fixture-before';
+        $directory = sys_get_temp_dir().'/underground-catalog-'.bin2hex(random_bytes(8));
+        mkdir($directory.'/underground/balance', 0700, true);
+        $encode = static fn (array $manifest): string => json_encode($manifest, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+        try {
+            $this->app->useConfigPath($directory);
+            file_put_contents(config_path($foundationPath), $encode($foundation));
+            file_put_contents(config_path($trialPath), $encode($trial));
+            $catalog = app(UndergroundAlphaV1PlayerCatalog::class);
+            $first = $catalog->laboratoryCatalog();
+            $firstTrial = $catalog->trialCatalog('trial_01');
+            $this->assertSame($firstTrial, $catalog->trialCatalog('trial_01'));
+
+            $model = app(AlphaV1CombatModel::class);
+            $fight = $model->fight($first, 'balanced', $enemyKey, 'late', 17, 4);
+            $this->assertEquals($fight, $model->fight($catalog->laboratoryCatalog(), 'balanced', $enemyKey, 'late', 17, 4));
+            $copy = $first->manifest();
+            $copy['enemies'][$enemyKey]['label'] = 'local mutation';
+            $this->assertSame($foundation['enemies'][$enemyKey]['label'], $first->enemy($enemyKey)['label']);
+
+            $mtime = filemtime(config_path($foundationPath));
+            $size = filesize(config_path($foundationPath));
+            $foundation['enemies'][$enemyKey]['label'] = 'fixture-after!';
+            file_put_contents(config_path($foundationPath), $encode($foundation));
+            touch(config_path($foundationPath), $mtime);
+            clearstatcache(true, config_path($foundationPath));
+            $this->assertSame($size, filesize(config_path($foundationPath)));
+            $this->assertSame($mtime, filemtime(config_path($foundationPath)));
+            $refreshed = $catalog->laboratoryCatalog();
+            $this->assertNotSame($first, $refreshed);
+            $this->assertSame($foundation['enemies'][$enemyKey]['label'], $refreshed->enemy($enemyKey)['label']);
+            $this->assertSame('fixture-before', $first->enemy($enemyKey)['label']);
+            $this->assertNotSame($firstTrial, $catalog->trialCatalog('trial_01'));
+
+            $trial['enemies'][$trialEnemyKey]['label'] = 'updated trial fixture';
+            file_put_contents(config_path($trialPath), $encode($trial));
+            $this->assertSame($trial['enemies'][$trialEnemyKey]['label'], $catalog->trialCatalog('trial_01')->enemy($trialEnemyKey)['label']);
+
+            file_put_contents(config_path($foundationPath), '{invalid');
+            try {
+                $catalog->laboratoryCatalog();
+                $this->fail('Changed invalid input must not reuse a previously valid catalog.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('manifest is invalid', $exception->getMessage());
+            }
+            file_put_contents(config_path($foundationPath), $encode($foundation));
+            $this->app->forgetScopedInstances();
+            $nextScope = app(UndergroundAlphaV1PlayerCatalog::class);
+            $this->assertNotSame($catalog, $nextScope);
+            $this->assertEquals($refreshed->manifest(), $nextScope->laboratoryCatalog()->manifest());
+        } finally {
+            $this->app->useConfigPath($originalConfigPath);
+            unlink($directory.'/'.$foundationPath);
+            unlink($directory.'/'.$trialPath);
+            rmdir($directory.'/underground/balance');
+            rmdir($directory.'/underground');
+            rmdir($directory);
+        }
     }
 
     public function test_growth_path_stp_per_level_is_authored_without_a_persisted_balance_literal(): void

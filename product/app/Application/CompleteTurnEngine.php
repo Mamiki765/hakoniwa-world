@@ -12,6 +12,7 @@ use App\Domain\Economy\SalePolicy;
 use App\Domain\Economy\UnderseaCityMaintenancePlanner;
 use App\Domain\Facility\FacilityCapacityService;
 use App\Domain\Facility\FacilityRankPolicy;
+use App\Domain\Facility\SettlementStageResolver;
 use App\Domain\Map\GridCoordinate;
 use App\Domain\Map\MapCellStateService;
 use App\Domain\Map\NationLandAreaCalculator;
@@ -90,6 +91,7 @@ final class CompleteTurnEngine
         private readonly SeaAreaWeatherService $weather,
         private readonly WorldMonsterCountSnapshot $monsterCounts,
         private readonly EcopoService $ecopo,
+        private readonly DeferredMapCellWriter $deferredCells,
     ) {}
 
     public function execute(string $phase, TurnContext $context): TurnPhaseResult
@@ -101,7 +103,7 @@ final class CompleteTurnEngine
             'nation_economy' => $this->nationEconomy($context),
             'resource_sales' => $this->sellResources($context),
             'development_commands' => $this->developmentCommands($context),
-            'process_cells' => $this->processCells($context),
+            'process_cells' => $this->events->duringCellProcessing($context, fn (): array => $this->processCells($context)),
             'settle_deferred_effects' => $this->settleDeferredEffects($context),
             'global_disasters' => $this->disasters->executeGlobal($context),
             'aggregate_nations' => $this->aggregateNations($context),
@@ -527,6 +529,20 @@ final class CompleteTurnEngine
 
     /** @return array<string, int> */
     private function processCells(TurnContext $context): array
+    {
+        $this->deferredCells->begin();
+        try {
+            $metrics = $this->processSurfaceCells($context);
+            $this->deferredCells->flush();
+
+            return $metrics;
+        } finally {
+            $this->deferredCells->end();
+        }
+    }
+
+    /** @return array<string, int> */
+    private function processSurfaceCells(TurnContext $context): array
     {
         $metrics = [
             'processed' => 0, 'forest_growth' => 0, 'settlements_appeared' => 0,
@@ -1543,7 +1559,7 @@ final class CompleteTurnEngine
         $before = $cell->terrain_quantity;
         $cell->terrain_quantity = $after;
         $cell->version++;
-        $this->saveChangedCell($context, $cell);
+        $this->saveGrownCell($context, $cell);
         if ($cell->owner_nation_id !== null) {
             $context->state->addRoutineSummaryMetric((int) $cell->owner_nation_id, 'forest_growth_cells');
             $context->state->addRoutineSummaryMetric(
@@ -1830,10 +1846,16 @@ final class CompleteTurnEngine
             $cell->population = min($maximumPopulation, $before + $growth + $indomitableBonus);
         }
         $increase = $cell->population - $before;
-        $transition = $this->syncSettlementStage($context, $cell);
         if ($increase > 0) {
             $cell->version++;
-            $this->saveChangedCell($context, $cell);
+        }
+        $transition = $this->syncSettlementStage($context, $cell);
+        if ($increase > 0) {
+            // A stage transition already saved the grown population and both
+            // version increments; skip the second UPDATE of the same row.
+            if ($transition === 0) {
+                $this->saveGrownCell($context, $cell);
+            }
             $context->state->addRoutineSummaryMetric((int) $cell->owner_nation_id, 'population_growth_cells');
             $context->state->addRoutineSummaryMetric(
                 (int) $cell->owner_nation_id,
@@ -1856,14 +1878,10 @@ final class CompleteTurnEngine
             return 0;
         }
         $stages = $context->ruleset->settings['turn_processing']['settlement']['stages'];
-        $targetKey = 'city';
-        foreach (['village', 'town', 'city'] as $stageKey) {
-            $stage = $stages[$stageKey];
-            if ($cell->population >= $stage['minimum_population'] && $cell->population <= $stage['maximum_population']) {
-                $targetKey = $stage['facility_key'];
-                break;
-            }
-        }
+        $targetKey = SettlementStageResolver::forPopulation(
+            $cell->population,
+            [$stages['village'], $stages['town'], $stages['city']],
+        );
         $before = $cell->facility?->key;
         if ($before === $targetKey) {
             return 0;
@@ -1923,6 +1941,15 @@ final class CompleteTurnEngine
     private function saveChangedCell(TurnContext $context, MapCell $cell): void
     {
         $cell->save();
+        $context->state->markMapChunkChanged($cell->map_chunk_id);
+    }
+
+    /** Population or forest growth only; batched with the other growth writes of this pass. */
+    private function saveGrownCell(TurnContext $context, MapCell $cell): void
+    {
+        if (! $this->deferredCells->defer($cell)) {
+            $cell->save();
+        }
         $context->state->markMapChunkChanged($cell->map_chunk_id);
     }
 }

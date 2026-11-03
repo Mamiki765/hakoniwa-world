@@ -169,6 +169,7 @@ final class DatabaseBaselineAdoptionTest extends TestCase
             '2026_10_18_010000_publish_market_synthesis_ruleset',
             CurrentDatabaseBaseline::INDEFINITE_MARKET_MIGRATION,
             '2026_10_18_030000_publish_indefinite_market_ruleset',
+            '2026_11_02_000000_publish_land_origin_territory_ruleset',
         ])->delete();
         foreach ([
             CurrentDatabaseBaseline::QUEUE_RULESET_RESOLUTION_MIGRATION => 'enforce_queue_item_world_ruleset_match',

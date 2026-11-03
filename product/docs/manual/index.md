@@ -24,8 +24,8 @@
 | 怪獣、ミサイル、防衛、KARMA | [怪獣と防衛](/manual/defense) |
 | 港・船・海の施設、埋蔵宝 | [海と船](/manual/sea) |
 | ほかの島との売り買い | [交易場](/manual/trading-post) |
-| 秘書の技能と地上の装備 | [地上の秘書](/manual/secretary) |
-| 地底の探索・試練・育成・装備 | [地底の冒険](/manual/underground) |
+| 秘書の技能と地上の装備、倉庫と合成 | [地上の秘書](/manual/secretary) |
+| 地底の探索・試練・育成・装備、露店 | [地底の冒険](/manual/underground) |
 | 建てられる施設の一覧 | [施設の索引](/manual/facilities) |
 | 開発コマンドの一覧と使い方 | [コマンドの索引](/manual/commands) |
 | 休眠・休戦・島の破棄、困ったとき | [島の状態とよくある質問](/manual/faq) |

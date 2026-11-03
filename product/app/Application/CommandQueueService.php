@@ -19,6 +19,7 @@ use App\Domain\Command\SettlementOverbuildPolicy;
 use App\Domain\Command\SurfaceCommandProjectionMemo;
 use App\Domain\Command\SurfaceLandProjection;
 use App\Domain\Command\TerritoryExpansionFacts;
+use App\Domain\Command\TerritoryExpansionOriginPolicy;
 use App\Domain\Command\TerritoryExpansionPolicy;
 use App\Domain\Command\UnderseaConstructionPolicy;
 use App\Domain\Command\WindPowerRepairPolicy;
@@ -80,6 +81,7 @@ final class CommandQueueService
         private readonly CommandQuantitySemantics $quantitySemantics,
         private readonly NationCommandTargetService $nationTargets,
         private readonly TerritoryExpansionPolicy $territoryExpansion,
+        private readonly TerritoryExpansionOriginPolicy $territoryOrigins,
         private readonly CapitalCorePolicy $capitalCores,
         private readonly MonsterDispatchOptionResolver $monsterDispatchOptions,
         private readonly UndergroundFacilityService $undergroundFacilities,
@@ -298,14 +300,7 @@ final class CommandQueueService
             );
             $this->assertVersion($queue, $expectedVersion);
 
-            $activeItems = NationCommandQueueItem::query()
-                ->where('nation_command_queue_id', $queue->id)
-                ->where('status', 'queued')
-                ->orderBy('queue_position')
-                ->orderBy('id')
-                ->with('definition')
-                ->lockForUpdate()
-                ->get();
+            $activeItems = $this->lockedQueuedItems($queue);
             $limit = $this->queueLimit($world);
             if ($activeItems->count() >= $limit) {
                 throw new PlayerFacingCommandException("command queueの上限{$limit}件に達しています。");
@@ -313,14 +308,7 @@ final class CommandQueueService
             if ($activeItems->contains(static fn (NationCommandQueueItem $item): bool => $item->queue_position === null || $item->queue_position < 1 || $item->queue_position > $limit
             )) {
                 $this->queueCompactor->compact($queue);
-                $activeItems = NationCommandQueueItem::query()
-                    ->where('nation_command_queue_id', $queue->id)
-                    ->where('status', 'queued')
-                    ->orderBy('queue_position')
-                    ->orderBy('id')
-                    ->with('definition')
-                    ->lockForUpdate()
-                    ->get();
+                $activeItems = $this->lockedQueuedItems($queue);
             }
             $position ??= $this->firstAutomaticPosition($activeItems->pluck('queue_position')->all(), $limit);
             if ($position < 1 || $position > $limit) {
@@ -564,7 +552,7 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $activeItems = $this->lockedItemsForPositioning($queue);
+            $activeItems = $this->lockedQueuedItems($queue);
             $currentIds = $activeItems->pluck('id')
                 ->map(static fn (mixed $id): int => (int) $id)
                 ->sort()
@@ -635,7 +623,7 @@ final class CommandQueueService
             [$lockedNation] = $this->lockActiveOwnerAfterWorld($user, $nation, $world);
             $queue = NationCommandQueue::query()->where('nation_id', $lockedNation->id)->lockForUpdate()->firstOrFail();
             $this->assertVersion($queue, $expectedVersion);
-            $activeItems = $this->lockedItemsForPositioning($queue);
+            $activeItems = $this->lockedQueuedItems($queue);
             $current = $activeItems->pluck('id')
                 ->map(static fn (mixed $id): int => (int) $id)
                 ->all();
@@ -656,7 +644,7 @@ final class CommandQueueService
     }
 
     /** @return Collection<int, NationCommandQueueItem> */
-    private function lockedItemsForPositioning(NationCommandQueue $queue): Collection
+    private function lockedQueuedItems(NationCommandQueue $queue): Collection
     {
         return NationCommandQueueItem::query()
             ->where('nation_command_queue_id', $queue->id)
@@ -722,14 +710,7 @@ final class CommandQueueService
             if ($item->nation_command_queue_id !== $queue->id || $item->status !== 'queued') {
                 throw new PlayerFacingCommandException('取消できないcommandです。');
             }
-            $activeItems = NationCommandQueueItem::query()
-                ->where('nation_command_queue_id', $queue->id)
-                ->where('status', 'queued')
-                ->orderBy('queue_position')
-                ->orderBy('id')
-                ->with('definition')
-                ->lockForUpdate()
-                ->get();
+            $activeItems = $this->lockedQueuedItems($queue);
             $nextPosition = 1;
             $proposedItems = $activeItems
                 ->reject(static fn (NationCommandQueueItem $activeItem): bool => $activeItem->id === $item->id)
@@ -959,7 +940,7 @@ final class CommandQueueService
 
             $plan = $plans[$overflowPolicy];
             $kept = $plan['kept'];
-            $dropped = $plan['dropped'];
+            $cancelled = $plan['cancelled'];
             $this->assertNoNewDangerousOverbuildEffects(
                 $queue,
                 $activeItems,
@@ -998,15 +979,13 @@ final class CommandQueueService
                 ]);
                 $insertedCount++;
             }
-            foreach ($dropped as $entry) {
-                if (isset($entry['existing'])) {
-                    $entry['existing']->update([
-                        'status' => 'cancelled',
-                        'queue_position' => null,
-                        'cancelled_at' => now(),
-                    ]);
-                    $this->audit($user, 'command.cancelled', $entry['existing'], ['reason' => 'bulk_tail_truncated']);
-                }
+            foreach ($cancelled as $item) {
+                $item->update([
+                    'status' => 'cancelled',
+                    'queue_position' => null,
+                    'cancelled_at' => now(),
+                ]);
+                $this->audit($user, 'command.cancelled', $item, ['reason' => 'bulk_tail_truncated']);
             }
             $queue->increment('version');
             $queue->refresh();
@@ -1015,7 +994,7 @@ final class CommandQueueService
                 'position' => $position,
                 'candidate_count' => count($candidates),
                 'inserted_count' => $insertedCount,
-                'truncated_count' => count($dropped),
+                'truncated_count' => $plan['truncated_count'],
             ]);
             $this->recordBulkRequest(
                 $queue,
@@ -1024,14 +1003,14 @@ final class CommandQueueService
                 $position,
                 count($candidates),
                 $insertedCount,
-                count($dropped),
+                $plan['truncated_count'],
                 $requestFingerprint,
             );
 
             return [
                 'queue' => $queue,
                 'inserted_count' => $insertedCount,
-                'truncated_count' => count($dropped),
+                'truncated_count' => $plan['truncated_count'],
                 'candidate_count' => count($candidates),
                 'cancelled_count' => $plan['cancelled_count'],
                 'skipped_count' => $plan['skipped_count'],
@@ -1056,17 +1035,20 @@ final class CommandQueueService
         $inserted = min(count($candidates), $capacity);
         $inserted -= $inserted % $groupSize;
         $suffixCount = max(0, $limit - count($prefix) - $inserted);
+        $cancelled = array_slice($suffix, $suffixCount);
         $existing = static fn (NationCommandQueueItem $item): array => ['existing' => $item];
         $generated = static fn (array $candidate): array => ['generated' => $candidate];
 
         return [
             'kept' => [...array_map($existing, $prefix), ...array_map($generated, array_slice($candidates, 0, $inserted)), ...array_map($existing, array_slice($suffix, 0, $suffixCount))],
-            'dropped' => [...array_map($generated, array_slice($candidates, $inserted)), ...array_map($existing, array_slice($suffix, $suffixCount))],
+            // Skipped candidates never become queue items; only their count is needed.
+            'cancelled' => $cancelled,
+            'truncated_count' => count($candidates) - $inserted + count($cancelled),
             'inserted_count' => $inserted, 'skipped_count' => count($candidates) - $inserted,
-            'cancelled_count' => max(0, count($suffix) - $suffixCount),
+            'cancelled_count' => count($cancelled),
             'cancelled_items' => array_map(static fn (NationCommandQueueItem $item): array => [
                 'id' => $item->id, 'queue_position' => (int) $item->queue_position,
-            ], array_slice($suffix, $suffixCount)),
+            ], $cancelled),
         ];
     }
 
@@ -1363,19 +1345,25 @@ final class CommandQueueService
         ?SurfaceCommandProjectionMemo $projectionMemo = null,
     ): bool {
         $projectionMemo ??= new SurfaceCommandProjectionMemo;
-        $neighbors = $this->projectedNeighborCells($mapSpace, $cell, $projectionMemo);
-        $adjacentActorTerritory = $neighbors->contains(function (MapCell $neighbor) use ($queue, $beforePosition, $nation, $mapSpace, $projectionMemo): bool {
-            $projected = $this->projectCellStateBeforePosition(
-                $neighbor,
-                $queue,
-                $beforePosition,
-                $nation,
-                $mapSpace,
-                projectionMemo: $projectionMemo,
-            );
+        $neighbors = $this->projectedNeighborCells($mapSpace, $cell, $projectionMemo)
+            ->keyBy(static fn (MapCell $neighbor): string => $neighbor->x.':'.$neighbor->y);
+        $adjacentActorTerritory = $this->territoryOrigins->withinProjected(
+            $nation,
+            $cell,
+            $definition->metadata,
+            function (int $x, int $y) use ($neighbors, $queue, $beforePosition, $nation, $mapSpace, $projectionMemo): ?array {
+                $neighbor = $neighbors->get($x.':'.$y);
 
-            return $projected['owner_nation_id'] === $nation->id;
-        });
+                return $neighbor === null ? null : $this->projectCellStateBeforePosition(
+                    $neighbor,
+                    $queue,
+                    $beforePosition,
+                    $nation,
+                    $mapSpace,
+                    projectionMemo: $projectionMemo,
+                );
+            },
+        );
 
         try {
             $this->validateTerritoryExpansionState(
@@ -1649,7 +1637,7 @@ final class CommandQueueService
                     'facility_key' => $facilityKey,
                     'owner_nation_id' => $ownerNationId,
                 ],
-                $ownerNationId !== $nation->id && $this->hasOwnedCellWithin($nation, $mapSpace, $cell, 1, false),
+                $ownerNationId !== $nation->id && $this->territoryOrigins->within($nation, $cell, $definition->metadata),
             );
 
             return;
@@ -2277,27 +2265,6 @@ final class CommandQueueService
         if (! $this->hasCurrentOwnedLandWithin($nation, $cell, LandDevelopmentDistancePolicy::WATER_RADIUS, projectionMemo: $projectionMemo)) {
             throw new PlayerFacingCommandException('建設対象の3hex以内に自国陸地がありません。');
         }
-    }
-
-    private function hasOwnedCellWithin(Nation $nation, MapSpace $mapSpace, MapCell $cell, int $radius, bool $includeCenter = true): bool
-    {
-        $coordinates = (new GridCoordinate($cell->x, $cell->y))->radius($radius);
-        if (! $includeCenter) {
-            $coordinates = array_values(array_filter(
-                $coordinates,
-                static fn (GridCoordinate $coordinate): bool => $coordinate->x !== $cell->x || $coordinate->y !== $cell->y,
-            ));
-        }
-
-        return MapCell::query()
-            ->where('map_space_id', $mapSpace->id)
-            ->where('owner_nation_id', $nation->id)
-            ->where(function ($query) use ($coordinates): void {
-                foreach ($coordinates as $coordinate) {
-                    $query->orWhere(fn ($pair) => $pair->where('x', $coordinate->x)->where('y', $coordinate->y));
-                }
-            })
-            ->exists();
     }
 
     /** @return array{owned_land: bool, sea: bool} */

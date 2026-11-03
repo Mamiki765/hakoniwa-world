@@ -85,7 +85,7 @@ token は actor・Nation・map space・action・position・version・候補/キ�
 
 移行中の既存 UI との互換性のため、token/方針を省略した旧 `/bulk` は従来の直接末尾押し出し動作を維持する。
 新 UI は必ず上記 preview/token 方式を使用する。token と方針は片方だけ送れない。
-旧 staged-position の修復は従来の登録時経路に残る。これは画面上の有効計画とは別の破損修復である。
+旧 staged-position の自動cancel・GET除外は[ADR-0013の5.0.1追補](../../../docs/decisions/ADR-0013-ver-2.1.3-resolution-and-legacy-queue.md)で撤去済み。現行の通常操作はtransaction/lock内でpositionをnull退避して整列する。この旧修復経路を再導入しない。
 
 ## 保管庫の保護
 

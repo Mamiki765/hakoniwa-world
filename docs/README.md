@@ -2,13 +2,15 @@
 
 通常の再開で読むのは現在地と、今回の作業に必要な文書だけです。過去のrelease順に全docsを読む必要はありません。
 
+文書・検証資産の扱いは[2026-10-31棚卸し](maintenance/2026-10-31.md)、保留PRの判断材料は[固定SHAのPR一覧](maintenance/open-prs-2026-10-31.md)、現行テストの実行入口は[testing](../product/docs/testing/README.md)を参照してください。棚卸しは記録時点の調査で、採用・本番導入の指示ではありません。
+
 ## 最新コードと過去資料の読み分け
 
 現在の設定は[現行Rulesetの確認方法](../product/docs/architecture/current-ruleset-baseline.md)と[authoring](../product/docs/architecture/ruleset-authoring.md)に従い、対象HEADの[config](../product/config/hakoniwa.php)から確認します。コードの版、PRの統合状態、本番への適用状態は別の証拠です。
 
 - 露店・合成・チケット部分使用・倉庫拡張は[5.5.0](../product/docs/releases/5.5.0-market-synthesis.md)、露店の無期限化は[5.6.0](../product/docs/releases/5.6.0.md)を参照します。5.5.0の7日期限は5.6.0で置き換わります。
 - fresh構築とsupported upgradeは[現行install/upgrade境界](../product/docs/architecture/install-upgrade-rebaseline.md)と[5.0.1 rebaselineの承認・検証記録](../product/docs/plans/5.0.1-ruleset-rebaseline.md)を入口にします。旧v27の手順を現行treeへ戻しません。
-- 古い構想帳や`current-contracts`の「地上合成は未実装」「露店・圧縮条件は未決」は、上記5.5系の採用範囲について後続決定に置き換わっています。弓・スーツ育成や自由な効果合成まで採用済みと読み替えません。
+- 古い構想帳の「地上合成は未実装」「露店・圧縮条件は未決」は、上記5.5系の採用範囲について後続決定に置き換わっています。[現行contract](../product/docs/handoffs/current-contracts.md)も採用範囲を反映しています。弓・スーツ育成や自由な効果合成まで採用済みと読み替えません。
 
 以下の版別資料と[文書一覧](documentation-inventory.md)には固定時点の記録も含みます。「現在」「未完」の語やcheckboxだけで現在の作業を決めず、後続決定とコードを照合してください。archiveの時点・元path・外部管理庫への移管は文書一覧の案内を使います。
 
@@ -47,6 +49,8 @@
 | 5.8.0 予約ブースト・障害補填と公開帯のrelease統合 | [5.8.0](../product/docs/releases/5.8.0.md)、[通常/補填cron手順](../product/docs/operations/turn-scheduler-worker.md) |
 | 5.8.1 ブーストの帯をTOPだけに表示 | [5.8.1](../product/docs/releases/5.8.1.md) |
 | 5.8.2 ルールセット設定のJSON解読をモデル単位で再利用 | [5.8.2](../product/docs/releases/5.8.2.md) |
+| 5.8.3 休眠島のお守り消費によるTurn停止の修正 | [5.8.3](../product/docs/releases/5.8.3.md) |
+| 5.9.0 PR統合・高速建設の村置換・v42手動拡張の陸地起点 | [5.9.0](../product/docs/releases/5.9.0.md) |
 | 外部管理庫の現在地・作業引継ぎへの入口 | [current-status](../product/docs/handoffs/current-status.md) |
 | 取り違えを防ぐ現行contract | [current-contracts](../product/docs/handoffs/current-contracts.md) |
 | IL200超の装備計算・研磨 | [地底装備の倍率とrating](../product/docs/architecture/underground-equipment-scaling.md) |

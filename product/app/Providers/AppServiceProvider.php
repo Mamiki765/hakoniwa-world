@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Application\CompleteTurnEngine;
 use App\Application\CurrentMonsterDefinitionResolver;
+use App\Application\DeferredMapCellWriter;
 use App\Application\InitialIslandGenerator;
 use App\Application\LegacyInspiredInitialIslandGenerator;
 use App\Application\MonsterRemovalService;
@@ -14,6 +15,7 @@ use App\Application\Underground\AtomicUndergroundPartyCombat;
 use App\Application\Underground\CanonicalUndergroundCombat;
 use App\Application\Underground\CanonicalUndergroundExplorationCombat;
 use App\Application\Underground\CanonicalUndergroundPartyCombat;
+use App\Application\Underground\UndergroundAlphaV1PlayerCatalog;
 use App\Console\ProductionDestructiveDatabaseCommandGuard;
 use App\Domain\Map\ChunkCoordinateService;
 use App\Domain\Nation\UserMembershipMutationLock;
@@ -46,6 +48,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(InitialIslandGenerator::class, LegacyInspiredInitialIslandGenerator::class);
         $this->app->bind(TurnSeedGenerator::class, RandomTurnSeedGenerator::class);
         $this->app->bind(AtomicUndergroundCombat::class, CanonicalUndergroundCombat::class);
+        $this->app->scoped(UndergroundAlphaV1PlayerCatalog::class);
         $this->app->bind(
             AtomicUndergroundExplorationCombat::class,
             CanonicalUndergroundExplorationCombat::class,
@@ -59,6 +62,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(MonsterRemovalService::class);
         $this->app->singleton(CurrentMonsterDefinitionResolver::class);
         $this->app->singleton(QueuedCommandDefinitionResolver::class);
+        // Each Connection retains its query callback; re-resolved pipelines
+        // must share the writer instead of retaining a new hook per attempt.
+        $this->app->singleton(DeferredMapCellWriter::class);
         $this->app->bind(TurnPipeline::class, function ($app): TurnPipeline {
             $engine = $app->make(CompleteTurnEngine::class);
 

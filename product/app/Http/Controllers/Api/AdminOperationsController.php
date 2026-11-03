@@ -30,6 +30,11 @@ final class AdminOperationsController extends Controller
     public function advanceTurn(Request $request, World $world, AdminOperationsService $operations): JsonResponse
     {
         $input = $request->validate(['target_turn' => ['required', 'integer', 'min:2']]);
+        // A full turn takes longer than the web max_execution_time, and a
+        // fatal timeout cannot record a result. Let the attempt finish even
+        // if the browser or proxy gives up waiting.
+        ignore_user_abort(true);
+        set_time_limit(0);
         try {
             return response()->json(['data' => $operations->advanceTurn($this->actor($request), $world, (int) $input['target_turn'])]);
         } catch (DomainException|TurnAlreadyRunningException $exception) {

@@ -1,5 +1,7 @@
 # 初回公開後backlog
 
+> 読み方: 初回公開と2026年8月時点の構想を含む記録です。本文の「30日経過による休眠状態遷移Job」や地底探索RPGの「未実装」は当時の状態を記録しています。個々の案の後続採用は[国家ライフサイクル](../architecture/nation-lifecycle.md)と[文書の入口](../README.md)から確認し、ここに残る候補をそのまま現在の実装TODOへ戻さないでください。
+
 PR23は箱庭諸島２S＋の初回production baselineを固定する。以下は初回公開へ含めず、別roadmapとowner decisionまでextension boundaryだけを維持する。
 
 ## 賞（ver 1.3.0で実装済み）

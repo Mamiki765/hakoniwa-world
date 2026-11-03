@@ -134,7 +134,8 @@ final class CommandQuantitySemantics
         }
     }
 
-    public function label(CommandDefinition $definition, int $quantity): ?string
+    /** @param (callable(int): ?string)|null $monumentNameForSelector */
+    public function label(CommandDefinition $definition, int $quantity, ?callable $monumentNameForSelector = null): ?string
     {
         if ($this->for($definition) !== self::SELECTOR) {
             return null;
@@ -159,12 +160,11 @@ final class CommandQuantitySemantics
             return '存在しない選択肢';
         }
 
-        $option = MonumentDefinition::query()->find($quantity);
-        if ($option !== null) {
-            return $option->name;
-        }
+        $name = $monumentNameForSelector === null
+            ? MonumentDefinition::query()->find($quantity)?->name
+            : $monumentNameForSelector($quantity);
 
-        return '存在しない選択肢';
+        return $name ?? '存在しない選択肢';
     }
 
     public function effectiveCostMoney(CommandDefinition $definition, int $quantity): int

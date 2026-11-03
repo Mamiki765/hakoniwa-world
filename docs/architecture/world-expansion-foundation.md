@@ -1,7 +1,10 @@
 # World expansion foundation
 
-Status: ver 1.5.0 foundation and explicit World expansion service. Manual Nation abandonment
-was added in ver 1.6.0; automatic dormancy/abandonment remains unimplemented and Deferred.
+本書はver 1.5.0のWorld拡張基盤とver 1.6.0の手動放棄を起点にした設計記録である。
+当時は範囲外だった自動休眠・放棄も、現行コードでは公式Turn内に実装されている。
+その状態遷移・所有・履歴保持の正本は[Nation lifecycle](nation-lifecycle.md)と
+[ADR-0014](../decisions/ADR-0014-ver-2.4.0-nation-dormancy.md)を参照する。
+以下のbounds・coverage・lock順の設計と、初期release時点の実装範囲を混同しない。
 
 Implementation evidence and exclusions are recorded in
 `docs/reference-analysis/h2-realignment-and-world-expansion-audit.md`.
@@ -49,14 +52,13 @@ rolling deploy with older turn workers. The mandatory ordering is:
 5. commit or roll back, then release the advisory lock in `finally`.
 
 Turn, Nation registration, reset, monster award-cycle seeding, manual Nation abandonment, and
-`WorldExpansionService` share this boundary now. The manual lifecycle contract is documented in
-[`product/docs/ver-1.6.0-nation-lifecycle.md`](../../product/docs/ver-1.6.0-nation-lifecycle.md).
-Future automatic dormancy/abandonment must use the same ordering but is not implemented. Nation registration owns
+`WorldExpansionService` share this boundary now. The current manual and automatic lifecycle contract is documented in
+[Nation lifecycle](nation-lifecycle.md). Automatic lifecycle transitions run inside the official
+Turn boundary. Nation registration owns
 the lock while it searches for a Capital placement candidate; only when that search returns zero
 candidates does it derive the next canonical signed bounds and call `WorldExpansionService` inside
 the same registration transaction. It then searches once more. No candidate after that one
-expansion is an invariant failure and rolls back both expansion and registration. Nation
-Automatic abandonment remains outside this release.
+expansion is an invariant failure and rolls back both expansion and registration.
 
 ## Registration expansion rotation
 

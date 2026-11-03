@@ -9,6 +9,55 @@ use InvalidArgumentException;
 
 final class TurnState
 {
+    /** @var list<array<string, mixed>>|null */
+    private ?array $cellAuditRows = null;
+
+    public function beginCellAuditBatch(): void
+    {
+        if ($this->cellAuditRows !== null) {
+            throw new \LogicException('A cell audit batch is already active.');
+        }
+        $this->cellAuditRows = [];
+    }
+
+    public function cellAuditBatchActive(): bool
+    {
+        return $this->cellAuditRows !== null;
+    }
+
+    /** @param array<string, mixed> $row */
+    public function appendCellAuditRow(array $row): bool
+    {
+        if ($this->cellAuditRows === null) {
+            return false;
+        }
+        $this->cellAuditRows[] = $row;
+
+        return true;
+    }
+
+    public function cellAuditRowCount(): int
+    {
+        return count($this->cellAuditRows ?? []);
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function takeCellAuditRows(): array
+    {
+        if ($this->cellAuditRows === null) {
+            throw new \LogicException('No cell audit batch is active.');
+        }
+        $rows = $this->cellAuditRows;
+        $this->cellAuditRows = [];
+
+        return $rows;
+    }
+
+    public function endCellAuditBatch(): void
+    {
+        $this->cellAuditRows = null;
+    }
+
     /** @var list<int> */
     private array $stableNationIds = [];
 

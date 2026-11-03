@@ -136,6 +136,24 @@ final class TurnRuntimePerformanceTest extends TestCase
         $this->assertLessThanOrEqual(40, $measurement['phases']['process_cells']['query_types']['select'] ?? 0);
     }
 
+    public function test_population_and_forest_growth_writes_are_batched(): void
+    {
+        $world = $this->processCellProfileWorld(3_600, 'growth');
+
+        $measurement = $this->measureTurn($world);
+
+        $this->report('60x60-growth', $measurement);
+        $metrics = $measurement['phases']['process_cells']['metrics'];
+        $this->assertSame(3_600, $metrics['processed']);
+        $this->assertGreaterThan(1_000, $metrics['forest_growth']);
+        $this->assertGreaterThan(0, $metrics['population_increased']);
+        // Each new village is its own save; grown towns and forests share one UPDATE per 500 cells.
+        $this->assertLessThanOrEqual(
+            $metrics['settlements_appeared'] + 20,
+            $measurement['phases']['process_cells']['query_types']['update'] ?? 0,
+        );
+    }
+
     public function test_fire_protection_source_scan_has_bounded_query_shape(): void
     {
         $world = $this->processCellProfileWorld(1_024, 'protection');
@@ -423,7 +441,11 @@ final class TurnRuntimePerformanceTest extends TestCase
         NationResource::query()
             ->where('nation_id', $nation->id)
             ->where('resource_definition_id', $wheatId)
-            ->update(['amount' => $fixture === 'famine' ? 0 : 1_000_000]);
+            ->update(['amount' => match ($fixture) {
+                'famine' => 0,
+                'growth' => 1_000_000_000,
+                default => 1_000_000,
+            }]);
         if ($fixture === 'normal') {
             return $world;
         }
@@ -485,6 +507,22 @@ final class TurnRuntimePerformanceTest extends TestCase
             ]);
         } elseif ($fixture === 'famine') {
             $this->setProfileFacility($cellIds, $defense->id, null, 0);
+        } elseif ($fixture === 'growth') {
+            $townIds = [];
+            $forestIds = [];
+            foreach ($cellIds as $index => $cellId) {
+                if ($index % 3 === 1) {
+                    $townIds[] = $cellId;
+                } elseif ($index % 3 === 2) {
+                    $forestIds[] = $cellId;
+                }
+            }
+            $town = FacilityDefinition::query()->where('key', 'town')->firstOrFail();
+            $this->setProfileFacility($townIds, $town->id, null, 3_000);
+            MapCell::query()->whereIn('id', $forestIds)->update([
+                'terrain_definition_id' => $forest->id,
+                'terrain_quantity' => $forest->initial_quantity,
+            ]);
         }
 
         return $world;

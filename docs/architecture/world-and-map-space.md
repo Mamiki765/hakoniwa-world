@@ -1,5 +1,10 @@
 # World and MapSpace
 
+本書はstaggered x/yへの座標移行時点の地図・保存境界を起点にした記録である。
+当時の実装scopeを現在の未実装一覧として扱わない。現行のWorld拡張は
+[World expansion foundation](world-expansion-foundation.md)、公式Turnは
+[Turn pipeline](turn-pipeline.md)を参照する。
+
 ## Ownership
 
 World は不変の ruleset version と current turn を持ち、地上は `surface` MapSpace として分離する。MapSpace は座標方式と現在生成済み bounds を持つ。
@@ -23,7 +28,7 @@ World は不変の ruleset version と current turn を持ち、地上は `surfa
 
 ## Initial bounds and expansion
 
-初期 world は論理的な長方形である。将来の world expansion は既存セルを移動せず、MapSpace bounds と chunk を追加する。地下、宇宙、複数 World は Deferred の extension boundary に留める。
+初期 world は論理的な長方形である。実装済みのWorld expansionは既存セルを移動せず、MapSpace bounds と chunk を追加する。座標移行時点で地下・宇宙・複数Worldを範囲外としていたことを、現在の首都地下施設や地底RPGが未実装という意味に読み替えない。現在の所有・実行境界は[文書入口の基本原則](../README.md#地上地下地底の基本原則)を参照する。
 
 ## API loading
 
@@ -31,4 +36,4 @@ API は world 全体ではなく chunk を返す。response は chunk_x/y、abso
 
 ## Turn boundary
 
-この coordinate migration は turn runner を実装しない。将来の複数 chunk lock 順、phase transaction、retry、random seed は `docs/open-questions.md` の turn gate が決定されてから実装する。
+座標移行自体はTurnRunnerを追加しなかった。現行のTurnRunner・phase transaction・retryは[Turn pipeline](turn-pipeline.md)、乱数は[Turn randomness](turn-randomness.md)を正本とする。初期の設計gateを現在も未決として再適用しない。
