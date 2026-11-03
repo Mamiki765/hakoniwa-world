@@ -616,7 +616,7 @@ function markAssetFailed(cell: MapCell): void {
                         N{{ item.cell.ship?.owner_nation?.nation_number ?? item.cell.owner_nation_number }}
                     </small>
                     <span v-if="showPlanMarks && firstPlanPosition(item.cell) !== null" class="plan-mark" aria-hidden="true">{{ firstPlanPosition(item.cell) }}</span>
-                    <span v-if="item.cell.needs_repair" class="repair-mark" title="故障中。選ぶと修理コマンドが一番上に出ます" aria-hidden="true">!</span>
+                    <span v-if="item.cell.needs_repair" class="repair-mark" aria-hidden="true">!</span>
                     <span v-if="shipDestination?.x === item.cell.x && shipDestination?.y === item.cell.y" class="ship-destination-flag" title="選択中の船の目的地" />
                     <span v-if="item.cell.monster" class="monster-overlay" aria-hidden="true">
                         <span class="monster-fallback">{{ item.cell.monster.name.slice(0, 1) }}</span>
