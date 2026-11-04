@@ -224,8 +224,8 @@ const undergroundNavLabel = computed(() => distortedStoneReminder.value
 // ☰ に回した項目に赤丸があれば、☰ にも付ける。
 const menuAttention = computed(() => (navInMenu('secretary') && collectionUnclaimed.value > 0)
     || (navInMenu('underground') && undergroundAttention.value));
-// 帯の項目や秘書の名前が変わったら、入りきるかを測り直す。
-watch(() => [user.value?.id, nation.value?.id, secretary.value?.header_label], () => void nextTick(scheduleNavOverflow));
+// 帯の項目・秘書の名前・テーマ（書体と文字の大きさが変わる）が変わったら、入りきるかを測り直す。
+watch(() => [user.value?.id, nation.value?.id, secretary.value?.header_label, themeMode.value], () => void nextTick(scheduleNavOverflow));
 // 既読にするのは、伝言板が画面に出ていて、本文を取得して表示できている分だけ。
 // ページが裏にあるあいだは既読にしない。前面へ戻ったときに、表示できている分をあらためて既読にする。
 watch(() => [ownBoard.displayed.value, ownBoard.bodyShown.value, ledger.boardVisible.value, page.value, ownBoard.pageVisible.value] as const, ([displayed, shown, visible, currentPage, pageVisible]) => {
