@@ -507,7 +507,9 @@ describe('command plan workspace', () => {
 
         expect(definitionUrls.some((url) => url.includes('construction_ship_id=31'))).toBe(true);
         expect(definitionUrls.some((url) => !url.includes('construction_ship_id'))).toBe(true);
-        const shipButtons = wrapper.findAll('.command-grid').at(-1)!.findAll('button');
+        // 工作船の真下に建てる欄は、通常の欄より上に出す（見つけやすさ）。
+        expect(wrapper.findAll('.sl-cmd-head.sub').map((head) => head.text())).toEqual(['真下に建築']);
+        const shipButtons = wrapper.findAll('.command-grid').at(0)!.findAll('button');
         expect(shipButtons).toHaveLength(1);
         expect(shipButtons[0]!.text()).toContain('900');
 
@@ -523,7 +525,8 @@ describe('command plan workspace', () => {
         expect(posts()[0]).toMatchObject({ command_key: 'build_seabed_base', parameters: { construction_ship_id: 31 } });
 
         await wrapper.get('.sl-all input').setValue(true);
-        await wrapper.get('.command-grid button').trigger('click');
+        expect(wrapper.findAll('.sl-cmd-head.sub').map((head) => head.text())).toEqual(['真下に建築', '通常']);
+        await wrapper.findAll('.command-grid').at(1)!.get('button').trigger('click');
         await flushPromises();
         await wrapper.get('[role="dialog"] form').trigger('submit');
         await flushPromises();
@@ -777,6 +780,23 @@ describe('command plan workspace', () => {
         await flushPromises();
 
         expect(wrapper.find('.command-grid button').exists()).toBe(false);
+    });
+
+    it('lifts the server-marked repair above the ordinary list without listing it twice', async () => {
+        const commands = [
+            definition({ key: 'land_clear', name: '整地' }),
+            definition({ key: 'build_wind_power', name: '風力発電所', repair: true }),
+        ];
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => jsonResponse(
+            String(input).includes('command-definitions') ? catalog(commands) : commandQueue(),
+        )));
+        const wrapper = mount(CommandQueuePanel, { props: { nationId: 1, mapSpaceId: 2, selected } });
+        await flushPromises();
+
+        expect(wrapper.findAll('.sl-cmd-head.sub').map((head) => head.text())).toEqual(['!修理', '通常']);
+        const grids = wrapper.findAll('.command-grid');
+        expect(grids[0]!.findAll('button').map((button) => button.find('.nm').text())).toEqual(['風力発電所']);
+        expect(grids[1]!.findAll('button').map((button) => button.find('.nm').text())).toEqual(['整地']);
     });
 
     it('hides off-condition commands regardless of funds, keeps far land development listed, and does not force a dialog for an after-plan command', async () => {

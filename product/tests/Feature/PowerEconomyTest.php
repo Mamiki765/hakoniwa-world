@@ -221,6 +221,7 @@ final class PowerEconomyTest extends TestCase
         $this->assertSame(100, $beforeRepair['cost_money']);
         $this->assertSame(0, $beforeRepair['shortfall_money']);
         $this->assertSame('currently_executable', $beforeRepair['execution_preview_status']);
+        $this->assertTrue($beforeRepair['repair']);
         $nation->update(['money' => 99]);
         $insufficient = collect($this->getJson($previewUrl)->assertOk()->json('data.commands'))->firstWhere('key', 'build_wind_power');
         $this->assertSame(1, $insufficient['shortfall_money']);
@@ -233,6 +234,7 @@ final class PowerEconomyTest extends TestCase
         $this->assertSame('currently_executable', $firstRepair['execution_preview_status']);
         $afterRepair = collect($this->getJson($previewUrl.'&position=2')->assertOk()->json('data.commands'))->firstWhere('key', 'build_wind_power');
         $this->assertSame(200, $afterRepair['cost_money']);
+        $this->assertFalse($afterRepair['repair']);
         $this->assertSame('currently_unavailable', $afterRepair['execution_preview_status']);
         app(CompleteTurnEngine::class)->execute('development_commands', $context);
         $this->assertSame('completed', $queue['item']->fresh()->status);
